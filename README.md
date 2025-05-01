@@ -6,7 +6,7 @@ Implement HORAYZON algorithm in pre-processing tool EXTPAR (on subgrid-scale).
 
  Create Conda environment:
 ```bash
-conda create -n horayzon_extpar_subgrid -c conda-forge embree tbb-devel cython numpy xarray netcdf4 matplotlib cartopy pyproj scipy numba pyinterp ipython
+conda create -n horayzon_extpar_subgrid -c conda-forge embree tbb-devel cython numpy xarray netcdf4 matplotlib cartopy pyproj scipy numba pyinterp trimesh ipython
 ```
 activate this environment, clone **HORAYZON_extpar_subgrid** and compile with:
 ```bash
