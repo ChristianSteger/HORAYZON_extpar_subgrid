@@ -9,21 +9,27 @@ import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
 from matplotlib import style, rcParams, tri, colors
+from matplotlib.patches import Polygon
 from time import perf_counter
 from numba import jit
-from numba.typed import Dict
 from numba import types
 import cartopy.crs as ccrs
 import cartopy.feature as feature
 import trimesh
 
+from functions import refine_mesh_4c_trimesh, refine_mesh_4c_py
+from functions import refine_mesh_4c_nb
+
 # Paths
-path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
+# path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
+#     + "ICON_grids_EXTPAR/"
+# path_plot = "/scratch/mch/csteger/HORAYZON_extpar/plots/"
+path_ige = "/Users/csteger/Dropbox/MeteoSwiss/Data/Miscellaneous/" \
     + "ICON_grids_EXTPAR/"
-path_plot = "/scratch/mch/csteger/HORAYZON_extpar/plots/"
+path_plots = "/Users/csteger/Desktop/"
 
 ###############################################################################
-# Increase ICON resolution to match DEM resolution
+# Load ICON grid data and pre-process
 ###############################################################################
 
 # Select ICON resolution
@@ -65,6 +71,449 @@ vx = np.cos(vlat) * np.cos(vlon)
 vy = np.cos(vlat) * np.sin(vlon)
 vz = np.sin(vlat)
 vector_v = np.ascontiguousarray(np.vstack([vx, vy, vz]).T)
+
+###############################################################################
+# Check if edges are also ordered counter-clockwise
+###############################################################################
+
+# for ind_cell in range(vertex_of_cell.shape[1]):
+#     ind_vert = vertex_of_cell[:, ind_cell]
+#     ind_vert_2d = edge_vertices[:, edge_of_cell[:, ind_cell]]
+#     for i in range(3):
+#         if (ind_vert_2d[0, i] != ind_vert[i]):
+#             ind_vert_2d[0, i], ind_vert_2d[1, i] \
+#                 = ind_vert_2d[1, i], ind_vert_2d[0, i]
+#     flag_a = np.all(ind_vert_2d[0, :] == ind_vert)
+#     flag_b = np.all(np.roll(ind_vert_2d[1, :], 1) == ind_vert)
+#     if (not flag_a) or (not flag_b):
+#         raise ValueError("Edges are not ordered counter-clockwise")
+
+###############################################################################
+# Refine mesh by iteratively splitting triangles into 4 child triangles
+###############################################################################
+
+# Compute refinement level
+# 4 ** k = cell_area_icon / cell_area_dem -> solve for k
+k = math.log(cell_area_icon / cell_area_dem) / (2.0 * math.log(2.0))
+k = round(k) # closest to DEM resolution
+# k = math.ceil(k) # first higher resolution than DEM
+print(f"Bisection steps (k): {k}")
+res_icon_ref = math.sqrt(cell_area_icon / (4 ** k))
+print(f"ICON resolution: {res_icon_ref:.1f} m")
+num_tri_ref = vertex_of_cell.shape[1] * (4 ** k)
+print(f"Number of resulting triangles: {num_tri_ref:,}".replace(",", "'"))
+
+# -----------------------------------------------------------------------------
+# Trimesh
+# -----------------------------------------------------------------------------
+
+# Refine triangle mesh
+faces = np.ascontiguousarray(vertex_of_cell.T)
+mesh = trimesh.Trimesh(vertices=vector_v, faces=faces)
+t_beg = perf_counter()
+mesh_ref = refine_mesh_4c_trimesh(mesh, level=2)
+t_end = perf_counter()
+print(f"Elapsed time: {t_end - t_beg:.2f} s")
+print(mesh_ref.vertices.shape, mesh_ref.faces.shape)
+
+# Plot
+num_tri_show = 25_000  # 25_000, None
+plt.figure(figsize=(10, 10))
+ax = plt.axes(projection=ccrs.PlateCarree())
+triangles = tri.Triangulation(np.rad2deg(vlon), np.rad2deg(vlat),
+                                  vertex_of_cell.transpose())
+plt.triplot(triangles, color="black", lw=1.0)
+vlon_ref = np.arctan2(mesh_ref.vertices[:, 1], mesh_ref.vertices[:, 0])
+vlat_ref = np.arcsin(mesh_ref.vertices[:, 2])
+triangles_ref = tri.Triangulation(np.rad2deg(vlon_ref), np.rad2deg(vlat_ref),
+                                  mesh_ref.faces[:num_tri_show, :])
+plt.triplot(triangles_ref, color="red", lw=0.5)
+ax.add_feature(feature.BORDERS.with_scale("10m"), # type: ignore
+            linestyle="-", linewidth=0.6)
+ax.add_feature(feature.COASTLINE.with_scale("10m"), # type: ignore
+            linestyle="-", linewidth=0.6)
+gl = ax.gridlines(crs=ccrs.PlateCarree(), linewidth=1, # type: ignore
+                  color="black", alpha=0.5, linestyle=":", draw_labels=True)
+gl.top_labels = False
+gl.right_labels = False
+plt.show()
+
+# -----------------------------------------------------------------------------
+# Python/Numba implementation
+# -----------------------------------------------------------------------------
+
+# Refine triangle mesh
+vertices = vector_v.copy()
+faces = np.ascontiguousarray(vertex_of_cell.T)
+t_beg = perf_counter()
+for _ in range(2):
+    # vertices, faces = refine_mesh_4c_py(vertices, faces)
+    vertices, faces = refine_mesh_4c_nb(vertices, faces)
+vlon_ref = np.arctan2(vertices[:, 1], vertices[:, 0])
+vlat_ref = np.arcsin(vertices[:, 2])
+t_end = perf_counter()
+print(f"Elapsed time: {t_end - t_beg:.2f} s")
+print(vertices.shape, faces.shape)
+
+# Plot
+num_tri_show = 25_000  # 25_000, None
+plt.figure(figsize=(10, 10))
+ax = plt.axes(projection=ccrs.PlateCarree())
+triangles = tri.Triangulation(np.rad2deg(vlon), np.rad2deg(vlat),
+                                  vertex_of_cell.transpose())
+plt.triplot(triangles, color="black", lw=1.0)
+triangles_ref = tri.Triangulation(np.rad2deg(vlon_ref), np.rad2deg(vlat_ref),
+                                  faces[:num_tri_show, :])
+plt.triplot(triangles_ref, color="red", lw=0.5)
+ax.add_feature(feature.BORDERS.with_scale("10m"), # type: ignore
+            linestyle="-", linewidth=0.6)
+ax.add_feature(feature.COASTLINE.with_scale("10m"), # type: ignore
+            linestyle="-", linewidth=0.6)
+gl = ax.gridlines(crs=ccrs.PlateCarree(), linewidth=1, # type: ignore
+                  color="black", alpha=0.5, linestyle=":", draw_labels=True)
+gl.top_labels = False
+gl.right_labels = False
+plt.show()
+
+###############################################################################
+# Refine mesh by splitting into n ** 2 child triangles
+###############################################################################
+
+# Compute refinement level
+# n ** 2 = cell_area_icon / cell_area_dem -> solve for n
+n = math.sqrt(cell_area_icon / cell_area_dem)
+n = round(n) # closest to DEM resolution
+# n = math.ceil(n) # first higher resolution than DEM
+print(f"Division steps (n): {n}")
+res_icon_ref = math.sqrt(cell_area_icon / (n ** 2))
+print(f"ICON resolution: {res_icon_ref:.1f} m")
+num_tri_ref = vertex_of_cell.shape[1] * (n ** 2)
+print(f"Number of resulting triangles: {num_tri_ref:,}".replace(",", "'"))
+
+# -----------------------------------------------------------------------------
+# Check approximation of spherical triangle by planar triangle
+# -----------------------------------------------------------------------------
+
+rad_earth = 6371 # [km]
+dist_per_angle = (2.0 * rad_earth * np.pi) / 360.0  # [km / degree]
+angle = 0.05 # [degree] (2km: ~ 0.02 deg)
+arc_length = dist_per_angle * angle  # [km]
+print(arc_length)
+chord_length = 2.0 * rad_earth * np.sin(np.deg2rad(angle) / 2.0)  # [km]
+print(chord_length)
+print((arc_length - chord_length) * 1000.0) # [m]
+
+# -----------------------------------------------------------------------------
+# 2-dimensional
+# -----------------------------------------------------------------------------
+
+# A = np.array([0.0, 0.0, 0.0])
+# B = np.array([1.0, 0.0, 0.0])
+# C = np.array([0.5, 1.0, 0.0])
+
+# n = 7
+# plt.figure()
+# plt.scatter(A[0], A[1], s=100, color="grey")
+# plt.scatter(B[0], B[1], s=100, color="grey")
+# plt.scatter(C[0], C[1], s=100, color="grey")
+# # --------------- all vertices ------------------
+# for i in range(n + 1):
+#     for j in range(n + 1 - i):
+#         k = n - i - j
+#         P = (i * A + j * B + k * C) / n
+#         plt.scatter(P[0], P[1], s=50, color="blue",
+#                     alpha=0.5)
+# # --------- only interior vertices ---------------
+# for i in range(1, n):
+#     for j in range(1, n - i):
+#         k = n - i - j
+#         P = (i * A + j * B + k * C) / n
+#         plt.scatter(P[0], P[1], s=25, color="red")
+# # ------------------------------------------------
+# plt.show()
+
+# -----------------------------------------------------------------------------
+# 3-dimensional
+# -----------------------------------------------------------------------------
+
+ind_cell = 13_343
+points = vector_v[vertex_of_cell[:, ind_cell]]
+A = points[0, :]
+B = points[1, :]
+C = points[2, :]
+lon = np.arctan2(points[:, 1], points[:, 0])
+lat = np.arcsin(points[:, 2])
+
+n = 2
+plt.figure()
+ax = plt.axes()
+plt.scatter(np.rad2deg(lon), np.rad2deg(lat), s=100, color="grey")
+# --------------- all vertices ------------------
+m = 0
+count = 0
+for i in range(n - 1):
+    count += i
+vertices = np.empty((n * 3 + count, 3), dtype=np.float64)
+index_2d = np.empty((n + 1, n + 1), dtype=np.int32)
+index_2d.fill(-999)
+for i in range(n + 1):
+    for j in range(n + 1 - i):
+        k = n - i - j
+        P = (k * A + i * B + j * C) / n
+        vertices[m, :] = P
+        index_2d[i, j] = m
+        m += 1
+lon_v = np.arctan2(vertices[:, 1], vertices[:, 0])
+lat_v = np.arcsin(vertices[:, 2])
+plt.scatter(np.rad2deg(lon_v), np.rad2deg(lat_v),
+            s=50, color="blue", alpha=0.5)
+for i in range(vertices.shape[0]):
+    plt.text(np.rad2deg(lon_v[i]), np.rad2deg(lat_v[i]), str(i),
+                fontsize=12, color="black")
+
+# Create child triangles
+faces = np.empty((n ** 2, 3), dtype=np.int32)
+ind = 0
+for i in range(n):
+        for j in range(n - i):
+            v0 = int(index_2d[i, j])
+            v1 = int(index_2d[i + 1, j])
+            v2 = int(index_2d[i, j + 1])
+            faces[ind, :] = (v0, v1, v2)
+            ind += 1
+            if i + j + 1 < n:
+                v3 = int(index_2d[i + 1, j + 1])
+                faces[ind, :] = (v1, v3, v2)
+                ind += 1
+print(faces)
+for ind in faces:
+    x = np.rad2deg(lon_v[ind])
+    y = np.rad2deg(lat_v[ind])
+    poly = Polygon(list(zip(x, y)), facecolor="grey", edgecolor="black",
+                   alpha=0.25)
+    ax.add_patch(poly)
+
+# --------- only interior vertices ---------------
+# m = 0
+# for i in range(1, n):
+#     for j in range(1, n - i):
+#         k = n - i - j
+#         P = (k * A + i * B + j * C) / n
+#         P_lon = np.arctan2(P[1], P[0])
+#         P_lat = np.arcsin(P[2])
+#         plt.scatter(np.rad2deg(P_lon), np.rad2deg(P_lat),
+#                     s=25, color="red")
+#         plt.text(np.rad2deg(P_lon), np.rad2deg(P_lat), str(m),
+#                     fontsize=12, color="black")
+#         m += 1
+# ------------------------------------------------
+ax.autoscale_view()
+plt.show()
+
+# -----------------------------------------------------------------------------
+# Algorithm for grid refinement
+# -----------------------------------------------------------------------------
+
+n = 2 # number of subdivisions (2: 2 ** 2 = 4)
+
+# Array with new vertices
+vertices = vector_v.copy()
+num_vert_in = vertices.shape[0]
+num_vert_edge = edge_vertices.shape[1] * (n - 1)
+count = 0
+for i in range(n - 1):
+    count += i
+num_vert_interior = vertex_of_cell.shape[1] * count
+num_vert_tot = num_vert_in + num_vert_edge + num_vert_interior
+vertices_all = np.empty((num_vert_tot, 3), dtype=np.float64)
+vertices_all.fill(np.nan)
+vertices_all[:num_vert_in, :] = vector_v
+ind = num_vert_in
+
+# Plot
+plt.figure(figsize=(10, 10))
+ax = plt.axes(projection=ccrs.PlateCarree())
+v_lon = np.arctan2(vertices_all[:, 1], vertices_all[:, 0])
+v_lat = np.arcsin(vertices_all[:, 2])
+slice_v = slice(None, num_vert_in)
+triangles = tri.Triangulation(np.rad2deg(v_lon[slice_v]),
+                              np.rad2deg(v_lat[slice_v]),
+                                  vertex_of_cell.transpose())
+plt.triplot(triangles, color="black", lw=0.8)
+# ----------------------------------------------------------------
+# New vertices on edges
+# ----------------------------------------------------------------
+t = np.linspace(0.0, 1.0, num=(n + 1))[1:-1]
+for i in range(edge_vertices.shape[1]):  # loop through all edges
+    point_a = vertices[edge_vertices[0, i], :]
+    point_b = vertices[edge_vertices[1, i], :]
+    for j in range(n - 1):
+        vertices_all[ind, :] = point_a + t[j] * (point_b - point_a)
+        ind += 1
+v_lon = np.arctan2(vertices_all[:, 1], vertices_all[:, 0])
+v_lat = np.arcsin(vertices_all[:, 2])
+slice_v = slice(None, num_vert_in)
+plt.scatter(np.rad2deg(v_lon[slice_v]), np.rad2deg(v_lat[slice_v]),
+            s=20, color="blue")
+slice_v = slice(num_vert_in, num_vert_in + num_vert_edge)
+plt.scatter(np.rad2deg(v_lon[slice_v]), np.rad2deg(v_lat[slice_v]),
+            s=20, color="red")
+# ----------------------------------------------------------------
+# New vertices in the interior of triangles
+# ----------------------------------------------------------------
+for ind_cell in range(vertex_of_cell.shape[1]): # loop through all cells
+    point_a = vertices[vertex_of_cell[0, ind_cell]]
+    point_b = vertices[vertex_of_cell[1, ind_cell]]
+    point_c = vertices[vertex_of_cell[2, ind_cell]]
+    # ------ edge and interior vertices ------ 
+    # for i in range(n + 1):
+    #     for j in range(n + 1 - i):
+    # -------- only interior vertices -------- 
+    for i in range(1, n):
+        for j in range(1, n - i):
+    # ----------------------------------------
+            k = n - i - j
+            vertices_all[ind, :] \
+                = (k * point_a + i * point_b + j * point_c) / n
+            ind += 1
+v_lon = np.arctan2(vertices_all[:, 1], vertices_all[:, 0])
+v_lat = np.arcsin(vertices_all[:, 2])
+slice_v = slice(num_vert_in + num_vert_edge, ind)
+plt.scatter(np.rad2deg(v_lon[slice_v]), np.rad2deg(v_lat[slice_v]),
+            s=20, color="green", alpha=0.5)
+# ----------------------------------------------------------------
+# Connect vertices into child triangle
+# ----------------------------------------------------------------
+# ind_cell = 4535 # no reversal required
+ind_cell = 333 # reverse all
+# ind_cell = 953
+
+num_vert_per_tri = 3 + 3 * (n - 1) + count
+print(f"Number of vertices per triangle: {num_vert_per_tri}")
+indices = np.empty(num_vert_per_tri, dtype=np.int32)
+
+indices[:3] = vertex_of_cell[:, ind_cell]  # counter-clockwise ordered
+k = 0
+print(vertex_of_cell[:, ind_cell])
+print(edge_vertices[:, edge_of_cell[:, ind_cell]])
+for ind in edge_of_cell[:, ind_cell]:
+    slice_v = slice(3 + k * (n - 1), 3 + (k + 1) * (n - 1))
+    indices_edge = np.arange(num_vert_in + ind * (n - 1),
+                             num_vert_in + (ind + 1) * (n - 1))  # not necessarily ordered correctly!!!!
+    if vertex_of_cell[k, ind_cell] != edge_vertices[0, edge_of_cell[k, ind_cell]]:
+        print(f"{k}: Reverse ordering")
+        indices_edge = indices_edge[::-1]
+    indices[slice_v] = indices_edge
+    k += 1
+indices[slice_v.stop:] \
+    = range(num_vert_in + num_vert_edge + ind_cell * count,
+            num_vert_in + num_vert_edge + (ind_cell + 1) * count)
+
+plt.scatter(np.rad2deg(v_lon[indices]), np.rad2deg(v_lat[indices]),
+            s=50, facecolor="none", edgecolor="black", linewidth=2.0)
+shift = 0.0003
+for i, ind in enumerate(indices):
+    plt.text(np.rad2deg(v_lon[ind]) + shift, np.rad2deg(v_lat[ind]) + shift,
+             f"{i}", fontsize=12, color="black")
+if n == 2:
+    mapping = np.array([0, 5, 2, 3, 4, 1])
+elif n == 3:
+    mapping = np.array([0, 8, 7, 2, 3, 9, 6, 4, 5, 1])
+elif n == 4:
+    mapping = np.array([0, 11, 10, 9, 2, 3, 12, 13, 8, 4, 14, 7, 5, 6, 1])
+elif n == 5:
+    mapping = np.array([0, 14, 13, 12, 11, 2, 3, 15, 16, 17, 10, 4, 18, 19, 9, 5, 20, 8, 6, 7, 1])
+else:
+    raise ValueError("Not yet implemented!")
+
+# Plot child triangles ######################################################## not working yet...
+for ind in indices[mapping[faces]]:
+    x = np.rad2deg(v_lon[ind])
+    y = np.rad2deg(v_lat[ind])
+    poly = Polygon(list(zip(x, y)), facecolor="grey", edgecolor="black",
+                   alpha=0.25)
+    ax.add_patch(poly)
+
+# ----------------------------------------------------------------
+ax.add_feature(feature.BORDERS.with_scale("10m"), # type: ignore
+            linestyle="-", linewidth=0.6)
+ax.add_feature(feature.COASTLINE.with_scale("10m"), # type: ignore
+            linestyle="-", linewidth=0.6)
+gl = ax.gridlines(crs=ccrs.PlateCarree(), linewidth=1, # type: ignore
+                  color="black", alpha=0.5, linestyle=":", draw_labels=True)
+gl.top_labels = False
+gl.right_labels = False
+plt.show()
+
+
+print(vertex_of_cell.max())
+
+
+
+
+
+
+
+
+########### old stuff below...
+
+def normalize(v):
+    return v / np.linalg.norm(v)
+
+def subdivide_spherical_triangle(A, B, C, n):
+    """Subdivide a spherical triangle into n^2 sub-triangles on the unit sphere."""
+    A, B, C = map(normalize, (A, B, C))
+    points = {}
+    triangles = []
+
+    # Generate barycentric points and project to sphere
+    for i in range(n + 1):
+        for j in range(n + 1 - i):
+            k = n - i - j
+            P = (i * A + j * B + k * C) / n
+            points[(i, j)] = normalize(P)
+
+    # Connect points into triangles
+    for i in range(n):
+        for j in range(n - i):
+            v0 = points[(i, j)]
+            v1 = points[(i + 1, j)]
+            v2 = points[(i, j + 1)]
+            triangles.append((v0, v1, v2))
+
+            if i + j + 1 < n:
+                v3 = points[(i + 1, j + 1)]
+                triangles.append((v1, v3, v2))
+
+    return triangles  # List of 3-tuples of points on the sphere
+
+
+# Define triangle on unit sphere (e.g., normalized lat/lon coordinates)
+A = vector_v[vertex_of_cell[0, 0]]
+B = vector_v[vertex_of_cell[1, 0]]
+C = vector_v[vertex_of_cell[2, 0]]
+
+# Subdivide into 5x5 grid (n=5)
+triangles = subdivide_spherical_triangle(A, B, C, n=5)
+
+print(f"Generated {len(triangles)} spherical sub-triangles.")
+
+
+plt.plot()
+for i in triangles:
+    for j in i:
+        x, y, z = j
+        lon = np.arctan2(y, x)
+        lat = np.arcsin(y)
+        plt.scatter(np.rad2deg(lon), np.rad2deg(lat), s=10, color="green")
+plt.show()
+
+
+
+
+
+
+
 
 
 def vector_interp(u, v, num_points=10):
@@ -205,11 +654,11 @@ def subdivide_mesh(vector_v, vertex_of_cell):
 faces = np.ascontiguousarray(vertex_of_cell.T)
 mesh = trimesh.Trimesh(vertices=vector_v, faces=faces)
 
-def subdivide_and_project(mesh, levels=1):
-    for _ in range(levels):
-        mesh = mesh.subdivide()
-    mesh.vertices = mesh.vertices / np.linalg.norm(mesh.vertices, axis=1)[:, None]
-    return mesh
+# def subdivide_and_project(mesh, levels=1):
+#     for _ in range(levels):
+#         mesh = mesh.subdivide()
+#     mesh.vertices = mesh.vertices / np.linalg.norm(mesh.vertices, axis=1)[:, None]
+#     return mesh
 
 t_beg = perf_counter()
 mesh_ref = subdivide_and_project(mesh, levels=4)
@@ -247,34 +696,6 @@ plt.show()
 
 
 
-
-
-# Check if edges are also ordered counter-clockwise
-for ind_cell in range(vertex_of_cell.shape[1]):
-    ind_cell = 3333
-    ind_vert = vertex_of_cell[:, ind_cell]
-    #print(ind_vert)
-    ind_vert_2d = edge_vertices[:, edge_of_cell[:, ind_cell]]
-    # print(ind_vert_2d)
-    for i in range(3):
-        if (ind_vert_2d[0, i] != ind_vert[i]):
-            ind_vert_2d[0, i], ind_vert_2d[1, i] = ind_vert_2d[1, i], ind_vert_2d[0, i]
-    #print(ind_vert_2d)
-    a = np.all(ind_vert_2d[0, :] == ind_vert)
-    b = np.all(np.roll(ind_vert_2d[1, :], 1) == ind_vert)
-    if (not a) or (not b):
-        raise ValueError("Edges are not ordered counter-clockwise")
-
-
-
-# Compute refined ICON resolution
-n_parts = math.sqrt(cell_area_icon / cell_area_dem)
-n_parts = round(n_parts) # closest to DEM resolution
-# n_parts = math.ceil(n_parts) # first higher resolution than DEM
-cell_area_icon_ref = cell_area_icon / (n_parts ** 2)
-print(f"Refined ICON resolution: {math.sqrt(cell_area_icon_ref):.1f} m" \
-    + f" (n: {n_parts})")
-# -> new nodes on edges: n_parts - 1
 
 ###############################################################################
 # Increase grid resolution: artificial data (small)
@@ -324,18 +745,18 @@ plt.show()
 
 
 
-def midpoint(ind_v0, ind_v1, edge_midpoint_cache, vlon_new,
-             vlat_new, num_vert):
+# def midpoint(ind_v0, ind_v1, edge_midpoint_cache, vlon_new,
+#              vlat_new, num_vert):
 
-    edge_key = tuple(sorted((ind_v0, ind_v1)))
-    if edge_key not in edge_midpoint_cache:
+#     edge_key = tuple(sorted((ind_v0, ind_v1)))
+#     if edge_key not in edge_midpoint_cache:
 
-        vlon_new[num_vert] = (vlon_new[ind_v0] + vlon_new[ind_v1]) / 2.0
-        vlat_new[num_vert] = (vlat_new[ind_v0] + vlat_new[ind_v1]) / 2.0
-        edge_midpoint_cache[edge_key] = num_vert
-        num_vert += 1
+#         vlon_new[num_vert] = (vlon_new[ind_v0] + vlon_new[ind_v1]) / 2.0
+#         vlat_new[num_vert] = (vlat_new[ind_v0] + vlat_new[ind_v1]) / 2.0
+#         edge_midpoint_cache[edge_key] = num_vert
+#         num_vert += 1
 
-    return edge_midpoint_cache[edge_key], num_vert
+#     return edge_midpoint_cache[edge_key], num_vert
 
 def subdivide_mesh_dict(vlon, vlat, vertex_of_cell, label_tri):
     """Subdivide triangles mesh (1 -> 4) with dictionary implementation"""
