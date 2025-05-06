@@ -17,16 +17,16 @@ import cartopy.crs as ccrs
 import cartopy.feature as feature
 import trimesh
 
-from functions import refine_mesh_4c_trimesh, refine_mesh_4c_py
-from functions import refine_mesh_4c_nb
+from functions import refine_mesh_4c_trimesh
+from functions import refine_mesh_4c_py, refine_mesh_4c_nb
 
 # Paths
-# path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
-#     + "ICON_grids_EXTPAR/"
-# path_plot = "/scratch/mch/csteger/HORAYZON_extpar/plots/"
-path_ige = "/Users/csteger/Dropbox/MeteoSwiss/Data/Miscellaneous/" \
+path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
     + "ICON_grids_EXTPAR/"
-path_plots = "/Users/csteger/Desktop/"
+path_plot = "/scratch/mch/csteger/HORAYZON_extpar/plots/"
+# path_ige = "/Users/csteger/Dropbox/MeteoSwiss/Data/Miscellaneous/" \
+#     + "ICON_grids_EXTPAR/"
+# path_plots = "/Users/csteger/Desktop/"
 
 ###############################################################################
 # Load ICON grid data and pre-process
@@ -236,77 +236,86 @@ print((arc_length - chord_length) * 1000.0) # [m]
 # 3-dimensional
 # -----------------------------------------------------------------------------
 
+# Settings
 ind_cell = 13_343
-points = vector_v[vertex_of_cell[:, ind_cell]]
-A = points[0, :]
-B = points[1, :]
-C = points[2, :]
-lon = np.arctan2(points[:, 1], points[:, 0])
-lat = np.arcsin(points[:, 2])
+n = 5
 
-n = 2
+vertices = vector_v[vertex_of_cell[:, ind_cell]]
+vlon = np.arctan2(vertices[:, 1], vertices[:, 0])
+vlat = np.arcsin(vertices[:, 2])
+
 plt.figure()
 ax = plt.axes()
-plt.scatter(np.rad2deg(lon), np.rad2deg(lat), s=100, color="grey")
-# --------------- all vertices ------------------
-m = 0
-count = 0
+plt.scatter(np.rad2deg(vlon), np.rad2deg(vlat), s=100, color="grey")
+# -----------------------------------------------------------------
+# All vertices
+# -----------------------------------------------------------------
+
+num_vertex_interior = 0
 for i in range(n - 1):
-    count += i
-vertices = np.empty((n * 3 + count, 3), dtype=np.float64)
+    num_vertex_interior += i
+vertices_child = np.empty((n * 3 + num_vertex_interior, 3), dtype=np.float64)
 index_2d = np.empty((n + 1, n + 1), dtype=np.int32)
 index_2d.fill(-999)
+vertex_0 = vertices[0, :]
+vertex_1 = vertices[1, :]
+vertex_2 = vertices[2, :]
+ind_vertex = 0
 for i in range(n + 1):
     for j in range(n + 1 - i):
         k = n - i - j
-        P = (k * A + i * B + j * C) / n
-        vertices[m, :] = P
-        index_2d[i, j] = m
-        m += 1
-lon_v = np.arctan2(vertices[:, 1], vertices[:, 0])
-lat_v = np.arcsin(vertices[:, 2])
-plt.scatter(np.rad2deg(lon_v), np.rad2deg(lat_v),
+        vertex_new = (k * vertex_0 + i * vertex_1 + j * vertex_2) / n
+        vertices_child[ind_vertex, :] = vertex_new
+        index_2d[i, j] = ind_vertex
+        ind_vertex += 1
+vlon_child = np.arctan2(vertices_child[:, 1], vertices_child[:, 0])
+vlat_child = np.arcsin(vertices_child[:, 2])
+plt.scatter(np.rad2deg(vlon_child), np.rad2deg(vlat_child),
             s=50, color="blue", alpha=0.5)
-for i in range(vertices.shape[0]):
-    plt.text(np.rad2deg(lon_v[i]), np.rad2deg(lat_v[i]), str(i),
+for i in range(vertices_child.shape[0]):
+    plt.text(np.rad2deg(vlon_child[i]), np.rad2deg(vlat_child[i]), str(i),
                 fontsize=12, color="black")
 
 # Create child triangles
 faces = np.empty((n ** 2, 3), dtype=np.int32)
-ind = 0
+ind_face = 0
 for i in range(n):
-        for j in range(n - i):
-            v0 = int(index_2d[i, j])
-            v1 = int(index_2d[i + 1, j])
-            v2 = int(index_2d[i, j + 1])
-            faces[ind, :] = (v0, v1, v2)
-            ind += 1
-            if i + j + 1 < n:
-                v3 = int(index_2d[i + 1, j + 1])
-                faces[ind, :] = (v1, v3, v2)
-                ind += 1
-print(faces)
-for ind in faces:
-    x = np.rad2deg(lon_v[ind])
-    y = np.rad2deg(lat_v[ind])
-    poly = Polygon(list(zip(x, y)), facecolor="grey", edgecolor="black",
-                   alpha=0.25)
-    ax.add_patch(poly)
+    for j in range(n - i):
+        ind_v0 = index_2d[i, j]
+        ind_v1 = index_2d[i + 1, j]
+        ind_v2 = index_2d[i, j + 1]
+        faces[ind_face, :] = (ind_v0, ind_v1, ind_v2)
+        ind_face += 1
+        if i + j + 1 < n:
+            inv_v3 = index_2d[i + 1, j + 1]
+            faces[ind_face, :] = (ind_v1, inv_v3, ind_v2)
+            ind_face += 1
+# print(faces)
 
-# --------- only interior vertices ---------------
-# m = 0
+# Plot child triangles
+triangles = tri.Triangulation(np.rad2deg(vlon_child), np.rad2deg(vlat_child),
+                              faces)
+plt.tripcolor(triangles, facecolors=[0.5] * faces.shape[0], cmap="binary",
+              vmin=0.0, vmax=1.0, edgecolor="black", lw=1.0, alpha=0.5)
+
+# -----------------------------------------------------------------
+# Only interior vertices
+# -----------------------------------------------------------------
+
+# ind = 0
 # for i in range(1, n):
 #     for j in range(1, n - i):
 #         k = n - i - j
-#         P = (k * A + i * B + j * C) / n
-#         P_lon = np.arctan2(P[1], P[0])
-#         P_lat = np.arcsin(P[2])
-#         plt.scatter(np.rad2deg(P_lon), np.rad2deg(P_lat),
+#         vertex_new = (k * vertex_0 + i * vertex_1 + j * vertex_2) / n
+#         vlon_new = np.arctan2(vertex_new[1], vertex_new[0])
+#         vlat_new = np.arcsin(vertex_new[2])
+#         plt.scatter(np.rad2deg(vlon_new), np.rad2deg(vlat_new),
 #                     s=25, color="red")
-#         plt.text(np.rad2deg(P_lon), np.rad2deg(P_lat), str(m),
+#         plt.text(np.rad2deg(vlon_new), np.rad2deg(vlat_new), str(ind),
 #                     fontsize=12, color="black")
-#         m += 1
-# ------------------------------------------------
+#         ind += 1
+
+# -----------------------------------------------------------------
 ax.autoscale_view()
 plt.show()
 
@@ -314,127 +323,179 @@ plt.show()
 # Algorithm for grid refinement
 # -----------------------------------------------------------------------------
 
-n = 2 # number of subdivisions (2: 2 ** 2 = 4)
+# Settings
+n = 6 # number of subdivisions (2: 2 ** 2 = 4)
 
-# Array with new vertices
 vertices = vector_v.copy()
-num_vert_in = vertices.shape[0]
-num_vert_edge = edge_vertices.shape[1] * (n - 1)
-count = 0
+
+# Compute number of new vertices
+num_vertex_in = vertices.shape[0]
+num_vertex_edge = edge_vertices.shape[1] * (n - 1)
+num_vertex_interior_pgc = 0  # number of interior vertices per grid cell
 for i in range(n - 1):
-    count += i
-num_vert_interior = vertex_of_cell.shape[1] * count
-num_vert_tot = num_vert_in + num_vert_edge + num_vert_interior
-vertices_all = np.empty((num_vert_tot, 3), dtype=np.float64)
-vertices_all.fill(np.nan)
-vertices_all[:num_vert_in, :] = vector_v
-ind = num_vert_in
+    num_vertex_interior_pgc += i
+num_vertex_interior = vertex_of_cell.shape[1] * num_vertex_interior_pgc
+num_vertex_ref = num_vertex_in + num_vertex_edge + num_vertex_interior
+
+# Mapping of triangle vertex indices
+num_vert_per_tri = 3 + 3 * (n - 1) + num_vertex_interior_pgc
+print(f"Number of vertices per triangle: {num_vert_per_tri}")
+mapping = np.empty(num_vert_per_tri, dtype=np.int32)
+ind = 0
+mapping[ind] = 0
+ind += 1
+mapping[ind:(ind + (n - 1))] \
+    = np.arange(3 + 2 * (n - 1), 3 + 2 * (n - 1) + (n - 1), dtype=np.int32)
+ind += (n - 1)
+mapping[ind] = 2
+ind += 1
+start = n * 3
+for i in range(0, n - 1):
+    mapping[ind] = 3 + i
+    ind += 1
+    mapping[ind:(ind + n - 2 - i)] \
+        = np.arange(start, start + n - 2 - i, dtype=np.int32)
+    start = start + n - 2 - i
+    ind += (n - 2 - i)
+    mapping[ind] = 3 + (n - 1) + i
+    ind += 1
+mapping[ind] = 1
+ind += 1
+if not np.all(np.diff(np.unique(mapping)) == 1) or (num_vert_per_tri != ind):
+    raise ValueError("Error while computing the remapping array")
+
+# Compute faces
+index_2d = np.empty((n + 1, n + 1), dtype=np.int32)
+index_2d.fill(-999)
+ind_vertex = 0
+for i in range(n + 1):
+    for j in range(n + 1 - i):
+        index_2d[i, j] = ind_vertex
+        ind_vertex += 1
+faces = np.empty((n ** 2, 3), dtype=np.int32)
+ind_face = 0
+for i in range(n):
+    for j in range(n - i):
+        ind_v0 = index_2d[i, j]
+        ind_v1 = index_2d[i + 1, j]
+        ind_v2 = index_2d[i, j + 1]
+        faces[ind_face, :] = (ind_v0, ind_v1, ind_v2)
+        ind_face += 1
+        if i + j + 1 < n:
+            inv_v3 = index_2d[i + 1, j + 1]
+            faces[ind_face, :] = (ind_v1, inv_v3, ind_v2)
+            ind_face += 1
+
+# Allocate arrays for refined mesh
+vertices_child = np.empty((num_vertex_ref, 3), dtype=np.float64)
+vertices_child.fill(np.nan) # temporary
+faces_child = np.empty((n ** 2 * vertex_of_cell.shape[1], 3), dtype=np.int32)
 
 # Plot
+# -------------------------- plot start --------------------------
 plt.figure(figsize=(10, 10))
 ax = plt.axes(projection=ccrs.PlateCarree())
-v_lon = np.arctan2(vertices_all[:, 1], vertices_all[:, 0])
-v_lat = np.arcsin(vertices_all[:, 2])
-slice_v = slice(None, num_vert_in)
-triangles = tri.Triangulation(np.rad2deg(v_lon[slice_v]),
-                              np.rad2deg(v_lat[slice_v]),
-                                  vertex_of_cell.transpose())
+vlon = np.arctan2(vertices_child[:, 1], vertices_child[:, 0])
+vlat = np.arcsin(vertices_child[:, 2])
+slice_v = slice(None, num_vertex_in)
+triangles = tri.Triangulation(np.rad2deg(vlon[slice_v]),
+                              np.rad2deg(vlat[slice_v]),
+                              vertex_of_cell.transpose())
 plt.triplot(triangles, color="black", lw=0.8)
+# --------------------------- plot end ---------------------------
 # ----------------------------------------------------------------
-# New vertices on edges
+# Add vertices from base mesh
+# ----------------------------------------------------------------
+vertices_child[:num_vertex_in, :] = vector_v
+# ----------------------------------------------------------------
+# Add vertices located on the edge of bash mesh (shared)
 # ----------------------------------------------------------------
 t = np.linspace(0.0, 1.0, num=(n + 1))[1:-1]
+ind_vertex = num_vertex_in
 for i in range(edge_vertices.shape[1]):  # loop through all edges
-    point_a = vertices[edge_vertices[0, i], :]
-    point_b = vertices[edge_vertices[1, i], :]
+    vertex_0 = vertices[edge_vertices[0, i], :]
+    vertex_1 = vertices[edge_vertices[1, i], :]
     for j in range(n - 1):
-        vertices_all[ind, :] = point_a + t[j] * (point_b - point_a)
-        ind += 1
-v_lon = np.arctan2(vertices_all[:, 1], vertices_all[:, 0])
-v_lat = np.arcsin(vertices_all[:, 2])
-slice_v = slice(None, num_vert_in)
-plt.scatter(np.rad2deg(v_lon[slice_v]), np.rad2deg(v_lat[slice_v]),
-            s=20, color="blue")
-slice_v = slice(num_vert_in, num_vert_in + num_vert_edge)
-plt.scatter(np.rad2deg(v_lon[slice_v]), np.rad2deg(v_lat[slice_v]),
-            s=20, color="red")
+        vertices_child[ind_vertex, :] = vertex_0 + t[j] * (vertex_1 - vertex_0)
+        ind_vertex += 1
 # ----------------------------------------------------------------
-# New vertices in the interior of triangles
+# Add vertices located in the interior of base mesh triangles
 # ----------------------------------------------------------------
 for ind_cell in range(vertex_of_cell.shape[1]): # loop through all cells
-    point_a = vertices[vertex_of_cell[0, ind_cell]]
-    point_b = vertices[vertex_of_cell[1, ind_cell]]
-    point_c = vertices[vertex_of_cell[2, ind_cell]]
-    # ------ edge and interior vertices ------ 
-    # for i in range(n + 1):
-    #     for j in range(n + 1 - i):
-    # -------- only interior vertices -------- 
+    vertex_0 = vertices[vertex_of_cell[0, ind_cell]]
+    vertex_1 = vertices[vertex_of_cell[1, ind_cell]]
+    vertex_2 = vertices[vertex_of_cell[2, ind_cell]]
     for i in range(1, n):
         for j in range(1, n - i):
-    # ----------------------------------------
             k = n - i - j
-            vertices_all[ind, :] \
-                = (k * point_a + i * point_b + j * point_c) / n
-            ind += 1
-v_lon = np.arctan2(vertices_all[:, 1], vertices_all[:, 0])
-v_lat = np.arcsin(vertices_all[:, 2])
-slice_v = slice(num_vert_in + num_vert_edge, ind)
-plt.scatter(np.rad2deg(v_lon[slice_v]), np.rad2deg(v_lat[slice_v]),
+            vertices_child[ind_vertex, :] \
+                = (k * vertex_0 + i * vertex_1 + j * vertex_2) / n
+            ind_vertex += 1
+# -------------------------- plot start --------------------------
+vlon = np.arctan2(vertices_child[:, 1], vertices_child[:, 0])
+vlat = np.arcsin(vertices_child[:, 2])
+slice_v = slice(0, num_vertex_in)
+plt.scatter(np.rad2deg(vlon[slice_v]), np.rad2deg(vlat[slice_v]),
+            s=20, color="blue")
+slice_v = slice(num_vertex_in, num_vertex_in + num_vertex_edge)
+plt.scatter(np.rad2deg(vlon[slice_v]), np.rad2deg(vlat[slice_v]),
+            s=20, color="red")
+slice_v = slice(num_vertex_in + num_vertex_edge, ind_vertex)
+plt.scatter(np.rad2deg(vlon[slice_v]), np.rad2deg(vlat[slice_v]),
             s=20, color="green", alpha=0.5)
+# --------------------------- plot end ---------------------------
 # ----------------------------------------------------------------
 # Connect vertices into child triangle
 # ----------------------------------------------------------------
-# ind_cell = 4535 # no reversal required
-ind_cell = 333 # reverse all
-# ind_cell = 953
-
-num_vert_per_tri = 3 + 3 * (n - 1) + count
-print(f"Number of vertices per triangle: {num_vert_per_tri}")
 indices = np.empty(num_vert_per_tri, dtype=np.int32)
-
-indices[:3] = vertex_of_cell[:, ind_cell]  # counter-clockwise ordered
-k = 0
-print(vertex_of_cell[:, ind_cell])
-print(edge_vertices[:, edge_of_cell[:, ind_cell]])
-for ind in edge_of_cell[:, ind_cell]:
-    slice_v = slice(3 + k * (n - 1), 3 + (k + 1) * (n - 1))
-    indices_edge = np.arange(num_vert_in + ind * (n - 1),
-                             num_vert_in + (ind + 1) * (n - 1))  # not necessarily ordered correctly!!!!
-    if vertex_of_cell[k, ind_cell] != edge_vertices[0, edge_of_cell[k, ind_cell]]:
-        print(f"{k}: Reverse ordering")
-        indices_edge = indices_edge[::-1]
-    indices[slice_v] = indices_edge
-    k += 1
-indices[slice_v.stop:] \
-    = range(num_vert_in + num_vert_edge + ind_cell * count,
-            num_vert_in + num_vert_edge + (ind_cell + 1) * count)
-
-plt.scatter(np.rad2deg(v_lon[indices]), np.rad2deg(v_lat[indices]),
-            s=50, facecolor="none", edgecolor="black", linewidth=2.0)
-shift = 0.0003
-for i, ind in enumerate(indices):
-    plt.text(np.rad2deg(v_lon[ind]) + shift, np.rad2deg(v_lat[ind]) + shift,
-             f"{i}", fontsize=12, color="black")
-if n == 2:
-    mapping = np.array([0, 5, 2, 3, 4, 1])
-elif n == 3:
-    mapping = np.array([0, 8, 7, 2, 3, 9, 6, 4, 5, 1])
-elif n == 4:
-    mapping = np.array([0, 11, 10, 9, 2, 3, 12, 13, 8, 4, 14, 7, 5, 6, 1])
-elif n == 5:
-    mapping = np.array([0, 14, 13, 12, 11, 2, 3, 15, 16, 17, 10, 4, 18, 19, 9, 5, 20, 8, 6, 7, 1])
-else:
-    raise ValueError("Not yet implemented!")
-
-# Plot child triangles ######################################################## not working yet...
-for ind in indices[mapping[faces]]:
-    x = np.rad2deg(v_lon[ind])
-    y = np.rad2deg(v_lat[ind])
-    poly = Polygon(list(zip(x, y)), facecolor="grey", edgecolor="black",
-                   alpha=0.25)
-    ax.add_patch(poly)
-
-# ----------------------------------------------------------------
+ind_face = 0
+for ind_cell in range(vertex_of_cell.shape[1]):
+# for ind_cell in range(500):
+    indices[:3] = vertex_of_cell[:, ind_cell]
+    # counter-clockwise ordered
+    ind_vertex = 0
+    for ind in edge_of_cell[:, ind_cell]:
+        indices_edge = np.arange(num_vertex_in + ind * (n - 1),
+                                 num_vertex_in + (ind + 1) * (n - 1))
+        # ordering (clockwise vs. counter-clockwise) not consistent
+        if ind_vertex == 0: # order: 0 -> 1
+            if vertex_of_cell[ind_vertex, ind_cell] \
+                != edge_vertices[0, edge_of_cell[ind_vertex, ind_cell]]:
+                indices_edge = indices_edge[::-1]
+        else: # order: 2 -> 1, 0 -> 2
+            if vertex_of_cell[ind_vertex, ind_cell] \
+                == edge_vertices[0, edge_of_cell[ind_vertex, ind_cell]]:
+                indices_edge = indices_edge[::-1]
+        slice_v = slice(3 + ind_vertex * (n - 1),
+                        3 + (ind_vertex + 1) * (n - 1))
+        indices[slice_v] = indices_edge
+        ind_vertex += 1
+    indices[slice_v.stop:] \
+        = np.arange(num_vertex_in + num_vertex_edge 
+                    + ind_cell * num_vertex_interior_pgc,
+                    num_vertex_in + num_vertex_edge 
+                    + (ind_cell + 1) * num_vertex_interior_pgc)
+    # ------------------------ plot start ------------------------
+    # plt.scatter(np.rad2deg(vlon[indices]), np.rad2deg(vlat[indices]),
+    #             s=50, facecolor="none", edgecolor="black", linewidth=2.0)
+    # shift = 0.0003
+    # for i, ind in enumerate(indices):
+    #     plt.text(np.rad2deg(vlon[ind]) + shift,
+    #              np.rad2deg(vlat[ind]) + shift,
+    #              f"{i}", fontsize=12, color="black")
+    # ------------------------- plot end -------------------------
+    for i in range(n ** 2):
+        faces_child[ind_face, :] = indices[mapping[faces[i, :]]]
+        ind_face += 1
+# -------------------------- plot start --------------------------
+slice_tri = slice(0, ind_face, None)
+triangles = tri.Triangulation(np.rad2deg(vlon), np.rad2deg(vlat), ####################### weitermachen!!!!
+                              faces_child[slice_tri, :])
+num_tri = faces_child[slice_tri, :].shape[0]
+cmap = "Spectral"
+facecolors=[0.5] * num_tri
+plt.tripcolor(triangles, facecolors=facecolors, cmap=cmap,
+              vmin=0.0, vmax=1.0, edgecolor="black", lw=1.0, alpha=0.5)
 ax.add_feature(feature.BORDERS.with_scale("10m"), # type: ignore
             linestyle="-", linewidth=0.6)
 ax.add_feature(feature.COASTLINE.with_scale("10m"), # type: ignore
@@ -444,15 +505,26 @@ gl = ax.gridlines(crs=ccrs.PlateCarree(), linewidth=1, # type: ignore
 gl.top_labels = False
 gl.right_labels = False
 plt.show()
+# --------------------------- plot end ---------------------------
 
+# Check that triangles are correctly connected
+if ((faces_child.min() != 0)
+    or (vertices_child.shape[0] != faces_child.max() + 1)):
+    raise ValueError("Array 'faces_child' is erroneous")
+dot_prod = np.empty((faces_child.shape[0], 3), dtype=np.float64)
+for i in range(faces_child.shape[0]):
+    vertices_tri = vertices_child[faces_child[i, :], :]
+    centroid = vertices_tri.mean(axis=0)
+    centroid /= np.linalg.norm(centroid) # unit vector
+    dot_prod[i, :] = np.dot(vertices_tri, centroid)
+print(dot_prod.max() - dot_prod.min())
 
-print(vertex_of_cell.max())
+alpha = np.rad2deg(np.arccos(dot_prod))
 
-
-
-
-
-
+alpha_min = np.rad2deg(np.arccos(dot_prod.max()))
+print(alpha_min)
+alpha_max = np.rad2deg(np.arccos(dot_prod.min()))
+print(alpha_max)
 
 
 ########### old stuff below...
