@@ -325,12 +325,14 @@ def refine_mesh_nc(vertices, vertex_of_cell, edge_of_cell, edge_vertices, n):
     return vertices_child, faces_child
 
 # -----------------------------------------------------------------------------
-# Auxiliary function to compute min/max angle between triangles centroids and
-# vertices
+# Auxiliary function
 # -----------------------------------------------------------------------------
 
 @njit(parallel=True)
 def alpha_minmax(vertices_child, faces_child):
+    """
+    Computes the minimal/maximal angle between triangles centroids and vertices
+    """
     num_tri = faces_child.shape[0]
     centroids = np.empty((num_tri, 3), dtype=np.float64)
     dot_prod_min = np.empty(num_tri, dtype=np.float64)
@@ -353,5 +355,18 @@ def alpha_minmax(vertices_child, faces_child):
     alpha_min = np.rad2deg(np.arccos(dot_prod_max.max()))
     alpha_max = np.rad2deg(np.arccos(dot_prod_min.min()))
     return alpha_min, alpha_max, centroids
+
+# -----------------------------------------------------------------------------
+
+@njit(parallel=True)
+def centroid_values(data_vertices, faces):
+    """Compute values at mesh cell centroids"""
+    data_centroids = np.empty((faces.shape[0]), dtype=data_vertices.dtype)
+    for i in prange(faces.shape[0]):
+        v0 = data_vertices[faces[i, 0]]
+        v1 = data_vertices[faces[i, 1]]
+        v2 = data_vertices[faces[i, 2]]
+        data_centroids[i] = (v0 + v1 + v2) / 3.0
+    return data_centroids
 
 ###############################################################################
