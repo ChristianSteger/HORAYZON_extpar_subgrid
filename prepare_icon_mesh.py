@@ -21,28 +21,29 @@ from functions import refine_mesh_nc, alpha_minmax
 style.use("classic")
 
 # Paths
-# path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
-#     + "ICON_grids_EXTPAR/"
-# path_plot = "/scratch/mch/csteger/HORAYZON_extpar/plots/"
-path_ige = "/Users/csteger/Dropbox/MeteoSwiss/Data/Miscellaneous/" \
+path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
     + "ICON_grids_EXTPAR/"
-path_dem = "/Users/csteger/Dropbox/MeteoSwiss/Data/DEMs/Copernicus_DEM/"
-path_plots = "/Users/csteger/Desktop/"
+path_dem = "/store_new/mch/msopr/csteger/Data/DEMs/Copernicus_DEM/"
+path_plot = "/scratch/mch/csteger/HORAYZON_extpar/plots/"
+# path_ige = "/Users/csteger/Dropbox/MeteoSwiss/Data/Miscellaneous/" \
+#     + "ICON_grids_EXTPAR/"
+# path_dem = "/Users/csteger/Dropbox/MeteoSwiss/Data/DEMs/Copernicus_DEM/"
+# path_plots = "/Users/csteger/Desktop/"
 
 ###############################################################################
 # Load ICON grid data and pre-process
 ###############################################################################
 
 # Select ICON resolution
-icon_res = "2km"  # "2km", "1km", "500m"
+icon_res = "1km"  # "2km", "1km", "500m"
 
 # -----------------------------------------------------------------------------
 
 # ICON grids
-# icon_grids = {"2km": "MeteoSwiss/icon_grid_0002_R19B07_mch.nc",
-#               "1km": "MeteoSwiss/icon_grid_0001_R19B08_mch.nc",
-#               "500m": "MeteoSwiss/icon_grid_00005_R19B09_DOM02.nc"}
-icon_grids = {"2km": "test/icon_grid_DOM01.nc",}
+icon_grids = {"2km": "MeteoSwiss/icon_grid_0002_R19B07_mch.nc",
+              "1km": "MeteoSwiss/icon_grid_0001_R19B08_mch.nc",
+              "500m": "MeteoSwiss/icon_grid_00005_R19B09_DOM02.nc"}
+# icon_grids = {"2km": "test/icon_grid_DOM01.nc",}
 
 # Resolution of DEM
 res_dem = (40075.0 * 1000.0 / 360.0) * (1.0 / 3600.0)  # ~max. resolution [m]
@@ -53,8 +54,6 @@ cell_area_dem = res_dem ** 2  # [m2]
 ds = xr.open_dataset(path_ige + icon_grids[icon_res])
 vlon = ds["vlon"].values
 vlat = ds["vlat"].values
-# clon = ds["clon"].values
-# clat = ds["clat"].values
 vertex_of_cell = ds["vertex_of_cell"].values - 1  # (3, num_cell; int32)
 # ordered counter-clockwise
 edge_of_cell = ds["edge_of_cell"].values - 1  # (3, num_cell; int32)
@@ -77,7 +76,7 @@ vector_v = np.ascontiguousarray(np.vstack([vx, vy, vz]).T)
 # Refine mesh by splitting into n ** 2 child triangles
 ###############################################################################
 
-# Compute refinement level
+# Compute theoretical refinement level
 # n ** 2 = cell_area_icon / cell_area_dem -> solve for n
 n = math.sqrt(cell_area_icon / cell_area_dem)
 n = round(n) # closest to DEM resolution
@@ -87,13 +86,25 @@ res_icon_ref = math.sqrt(cell_area_icon / (n ** 2))
 print(f"ICON resolution: {res_icon_ref:.1f} m")
 num_tri_ref = vertex_of_cell.shape[1] * (n ** 2)
 print(f"Number of resulting triangles: {num_tri_ref:,}".replace(",", "'"))
+print(f"Size of 'faces_child' array: {(12 * num_tri_ref / 1e9):.2f} GB")
+
+# Select refinement level
+n = 33 # MCH 1km -> 'faces' < 16 GB
+print(f"Division steps (n): {n}")
+res_icon_ref = math.sqrt(cell_area_icon / (n ** 2))
+print(f"ICON resolution: {res_icon_ref:.1f} m")
+num_tri_ref = vertex_of_cell.shape[1] * (n ** 2)
+print(f"Number of resulting triangles: {num_tri_ref:,}".replace(",", "'"))
+print(f"Size of 'faces_child' array: {(12 * num_tri_ref / 1e9):.2f} GB")
 
 # Refine ICON triangle mesh
-n = 73 # number of subdivisions (2: 2 ** 2 = 4)
 vertices = vector_v.copy()
+t_beg = perf_counter()
 vertices_child, faces_child = refine_mesh_nc(vertices, vertex_of_cell,
                                              edge_of_cell, edge_vertices, n)
 # %timeit -r 1 -n 1 refine_mesh_nc(vertices, vertex_of_cell, edge_of_cell, edge_vertices, n)
+t_end = perf_counter()
+print(f"ICON mesh refinement: {t_end - t_beg:.2f} s")
 
 # Check that vertices are correctly connected into triangles
 if ((faces_child.min() != 0)
@@ -118,20 +129,21 @@ parent_tri_id = np.repeat(np.arange(vertex_of_cell.shape[1]), n ** 2) \
     .astype(np.int32)
 
 # Create triangle objects
-vlon_p = np.arctan2(vertices[:, 1], vertices[:, 0])
-vlat_p = np.arcsin(vertices[:, 2])
-triangles_parent = tri.Triangulation(np.rad2deg(vlon_p), np.rad2deg(vlat_p),
-                                     vertex_of_cell.transpose())
-vlon_c = np.arctan2(vertices_child[:, 1], vertices_child[:, 0])
-vlat_c = np.arcsin(vertices_child[:, 2])
+vlon = np.arctan2(vertices[:, 1], vertices[:, 0])
+vlat = np.arcsin(vertices[:, 2])
+triangles = tri.Triangulation(np.rad2deg(vlon), np.rad2deg(vlat),
+                              vertex_of_cell.transpose())
+vlon_child = np.arctan2(vertices_child[:, 1], vertices_child[:, 0])
+vlat_child = np.arcsin(vertices_child[:, 2])
+del vertices_child
 
 # Check part of the mesh
 plt.figure(figsize=(15, 15))
-plt.triplot(triangles_parent, color="black", lw=0.8, ls="-")
+plt.triplot(triangles, color="black", lw=0.8, ls="-")
 num_tri_parent = 10
 num_tri_child = num_tri_parent * (n ** 2)
-triangles_child = tri.Triangulation(np.rad2deg(vlon_c),
-                                    np.rad2deg(vlat_c),
+triangles_child = tri.Triangulation(np.rad2deg(vlon_child),
+                                    np.rad2deg(vlat_child),
                                     faces_child[:num_tri_child, :])
 vmin = parent_tri_id[:num_tri_child].min()
 vmax = parent_tri_id[:num_tri_child].max()
@@ -139,20 +151,26 @@ plt.tripcolor(triangles_child, facecolors=parent_tri_id[:num_tri_child],
               cmap="Spectral", vmin=vmin, vmax=vmax, alpha=0.5)
 plt.triplot(triangles_child, color="black", lw=0.8, ls=":")
 plt.show()
+del triangles_child
 
 # Load raw DEM data (required domain)
 add = 0.02 # 'safety margin' [deg]
-ds = xr.open_dataset(path_dem + "Copernicus_DEM_N50-N40_E000-E020.nc")
-ds = ds.sel(lon=slice(np.rad2deg(vlon_p.min()) - add,
-                      np.rad2deg(vlon_p.max()) + add),
-            lat=slice(np.rad2deg(vlat_p.max()) + add,
-                      np.rad2deg(vlat_p.min()) - add))
-lon_dem = ds["lon"].values
-lat_dem = ds["lat"].values
-elevation_dem = ds["elevation"].values
+files_dem = ("Copernicus_DEM_N50-N40_W020-E000.nc",
+             "Copernicus_DEM_N50-N40_E000-E020.nc",
+             "Copernicus_DEM_N60-N50_W020-E000.nc",
+             "Copernicus_DEM_N60-N50_E000-E020.nc")
+ds = xr.open_mfdataset([path_dem + i for i in files_dem],
+                       mask_and_scale=False)
+ds = ds.sel(lon=slice(np.rad2deg(vlon.min()) - add,
+                      np.rad2deg(vlon.max()) + add),
+            lat=slice(np.rad2deg(vlat.max()) + add,
+                      np.rad2deg(vlat.min()) - add))
+lon_dem = np.deg2rad(ds["lon"].values) # float64, [rad]
+lat_dem = np.deg2rad(ds["lat"].values) # float64, [rad]
+elevation_dem = ds["elevation"].values # int16, [m]
 ds.close()
 
-# # Test plot
+# # Plot raw DEM data
 # plt.figure()
 # plt.pcolormesh(lon_dem, lat_dem, elevation_dem,
 #                shading="auto", cmap="terrain")
@@ -160,42 +178,43 @@ ds.close()
 # plt.show()
 
 # Interpolate elevation data on refined mesh vertices
-x_axis = pyinterp.Axis(lon_dem)
-y_axis = pyinterp.Axis(lat_dem)
+x_axis = pyinterp.Axis(lon_dem) # type: ignore
+y_axis = pyinterp.Axis(lat_dem) # type: ignore
 grid = pyinterp.Grid2D(x_axis, y_axis, elevation_dem.transpose())
-lon_ip = np.rad2deg(vlon_c)
-lat_ip = np.rad2deg(vlat_c)
-elevation_ip = pyinterp.bivariate(
-    grid, lon_ip, lat_ip, interpolator="bilinear", bounds_error=True,
-    num_threads=4)
+velev_child = pyinterp.bivariate(
+    grid, vlon_child, vlat_child, interpolator="bilinear", bounds_error=True,
+    num_threads=8) # could be converted to float32
 
-# Values at mesh cell circumcenters/centroids
-clon_c = vlon_c[faces_child].mean(axis=1)
-clat_c = vlat_c[faces_child].mean(axis=1)
-elevation_ip_c = elevation_ip[faces_child].mean(axis=1)
+# Values at mesh cell centroids
+clon_child = vlon_child[faces_child].mean(axis=1) ############################# write numba code to avoid large memory!!!
+clat_child = vlat_child[faces_child].mean(axis=1)
+celev_child = velev_child[faces_child].mean(axis=1)
 sub_dom = (6.65, 7.15, 45.75, 45.95)
-mask = ((np.rad2deg(clon_c) > sub_dom[0])
-        & (np.rad2deg(clon_c) < sub_dom[1]) 
-        & (np.rad2deg(clat_c) > sub_dom[2])
-        & (np.rad2deg(clat_c) < sub_dom[3]))
+mask = ((np.rad2deg(clon_child) > sub_dom[0])
+        & (np.rad2deg(clon_child) < sub_dom[1])
+        & (np.rad2deg(clat_child) > sub_dom[2])
+        & (np.rad2deg(clat_child) < sub_dom[3]))
 print(f"Triangle number in sub-domain: {mask.sum()}")
 
 # Test plot
 plt.figure(figsize=(15, 10))
-triangles_child = tri.Triangulation(np.rad2deg(vlon_c), np.rad2deg(vlat_c),
+triangles_child = tri.Triangulation(np.rad2deg(vlon_child),
+                                    np.rad2deg(vlat_child),
                                     faces_child[mask, :])
-plt.tripcolor(triangles_child, facecolors=elevation_ip_c[mask],
-              cmap="terrain", vmin=elevation_ip_c.min(),
-              vmax=elevation_ip_c.max(),
+plt.tripcolor(triangles_child, facecolors=celev_child[mask],
+              cmap="terrain", vmin=celev_child.min(), vmax=celev_child.max(),
               edgecolor="black", linewidth=0.1)
 plt.colorbar()
-plt.triplot(triangles_parent, color="black", lw=0.8, ls="-")
+plt.triplot(triangles, color="black", lw=0.8, ls="-")
 plt.scatter(6.864325, 45.832544, s=100, marker="^", color="black") # Mont Blanc
 plt.axis(sub_dom)
 plt.show()
+del triangles_child
 
 # Output:
-# vlon_c, vlat_c, elevation_ip_c, faces_child (int32), parent_tri_id (int32)
+# vlon_c (float64), vlat_c (float64)
+# velev_child (float64) (float32 would also be sufficient...)
+# faces_child (int32), parent_tri_id (int32)
 
 
 
