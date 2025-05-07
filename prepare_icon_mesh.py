@@ -14,6 +14,7 @@ import cartopy.crs as ccrs
 import cartopy.feature as feature
 import trimesh
 from scipy.spatial import KDTree
+import pyinterp
 
 from functions import refine_mesh_nc, alpha_minmax
 
@@ -25,6 +26,7 @@ style.use("classic")
 # path_plot = "/scratch/mch/csteger/HORAYZON_extpar/plots/"
 path_ige = "/Users/csteger/Dropbox/MeteoSwiss/Data/Miscellaneous/" \
     + "ICON_grids_EXTPAR/"
+path_dem = "/Users/csteger/Dropbox/MeteoSwiss/Data/DEMs/Copernicus_DEM/"
 path_plots = "/Users/csteger/Desktop/"
 
 ###############################################################################
@@ -87,7 +89,7 @@ num_tri_ref = vertex_of_cell.shape[1] * (n ** 2)
 print(f"Number of resulting triangles: {num_tri_ref:,}".replace(",", "'"))
 
 # Refine ICON triangle mesh
-n = 4 # number of subdivisions (2: 2 ** 2 = 4)
+n = 73 # number of subdivisions (2: 2 ** 2 = 4)
 vertices = vector_v.copy()
 vertices_child, faces_child = refine_mesh_nc(vertices, vertex_of_cell,
                                              edge_of_cell, edge_vertices, n)
@@ -111,9 +113,89 @@ if np.any(np.sort(faces_child, axis=1) != np.sort(ind, axis=1)):
 del centroids, tree, dist, ind
 # -----------------------------------------------------------
 
+# ID of parent triangle
+parent_tri_id = np.repeat(np.arange(vertex_of_cell.shape[1]), n ** 2) \
+    .astype(np.int32)
 
+# Create triangle objects
+vlon_p = np.arctan2(vertices[:, 1], vertices[:, 0])
+vlat_p = np.arcsin(vertices[:, 2])
+triangles_parent = tri.Triangulation(np.rad2deg(vlon_p), np.rad2deg(vlat_p),
+                                     vertex_of_cell.transpose())
+vlon_c = np.arctan2(vertices_child[:, 1], vertices_child[:, 0])
+vlat_c = np.arcsin(vertices_child[:, 2])
 
+# Check part of the mesh
+plt.figure(figsize=(15, 15))
+plt.triplot(triangles_parent, color="black", lw=0.8, ls="-")
+num_tri_parent = 10
+num_tri_child = num_tri_parent * (n ** 2)
+triangles_child = tri.Triangulation(np.rad2deg(vlon_c),
+                                    np.rad2deg(vlat_c),
+                                    faces_child[:num_tri_child, :])
+vmin = parent_tri_id[:num_tri_child].min()
+vmax = parent_tri_id[:num_tri_child].max()
+plt.tripcolor(triangles_child, facecolors=parent_tri_id[:num_tri_child],
+              cmap="Spectral", vmin=vmin, vmax=vmax, alpha=0.5)
+plt.triplot(triangles_child, color="black", lw=0.8, ls=":")
+plt.show()
 
+# Load raw DEM data (required domain)
+add = 0.02 # 'safety margin' [deg]
+ds = xr.open_dataset(path_dem + "Copernicus_DEM_N50-N40_E000-E020.nc")
+ds = ds.sel(lon=slice(np.rad2deg(vlon_p.min()) - add,
+                      np.rad2deg(vlon_p.max()) + add),
+            lat=slice(np.rad2deg(vlat_p.max()) + add,
+                      np.rad2deg(vlat_p.min()) - add))
+lon_dem = ds["lon"].values
+lat_dem = ds["lat"].values
+elevation_dem = ds["elevation"].values
+ds.close()
+
+# # Test plot
+# plt.figure()
+# plt.pcolormesh(lon_dem, lat_dem, elevation_dem,
+#                shading="auto", cmap="terrain")
+# plt.colorbar()
+# plt.show()
+
+# Interpolate elevation data on refined mesh vertices
+x_axis = pyinterp.Axis(lon_dem)
+y_axis = pyinterp.Axis(lat_dem)
+grid = pyinterp.Grid2D(x_axis, y_axis, elevation_dem.transpose())
+lon_ip = np.rad2deg(vlon_c)
+lat_ip = np.rad2deg(vlat_c)
+elevation_ip = pyinterp.bivariate(
+    grid, lon_ip, lat_ip, interpolator="bilinear", bounds_error=True,
+    num_threads=4)
+
+# Values at mesh cell circumcenters/centroids
+clon_c = vlon_c[faces_child].mean(axis=1)
+clat_c = vlat_c[faces_child].mean(axis=1)
+elevation_ip_c = elevation_ip[faces_child].mean(axis=1)
+sub_dom = (6.65, 7.15, 45.75, 45.95)
+mask = ((np.rad2deg(clon_c) > sub_dom[0])
+        & (np.rad2deg(clon_c) < sub_dom[1]) 
+        & (np.rad2deg(clat_c) > sub_dom[2])
+        & (np.rad2deg(clat_c) < sub_dom[3]))
+print(f"Triangle number in sub-domain: {mask.sum()}")
+
+# Test plot
+plt.figure(figsize=(15, 10))
+triangles_child = tri.Triangulation(np.rad2deg(vlon_c), np.rad2deg(vlat_c),
+                                    faces_child[mask, :])
+plt.tripcolor(triangles_child, facecolors=elevation_ip_c[mask],
+              cmap="terrain", vmin=elevation_ip_c.min(),
+              vmax=elevation_ip_c.max(),
+              edgecolor="black", linewidth=0.1)
+plt.colorbar()
+plt.triplot(triangles_parent, color="black", lw=0.8, ls="-")
+plt.scatter(6.864325, 45.832544, s=100, marker="^", color="black") # Mont Blanc
+plt.axis(sub_dom)
+plt.show()
+
+# Output:
+# vlon_c, vlat_c, elevation_ip_c, faces_child (int32), parent_tri_id (int32)
 
 
 
