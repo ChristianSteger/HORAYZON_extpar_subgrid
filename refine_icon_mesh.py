@@ -22,7 +22,7 @@ path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
     + "ICON_grids_EXTPAR/"
 path_dem = "/store_new/mch/msopr/csteger/Data/DEMs/Copernicus_DEM/"
 path_plot = "/scratch/mch/csteger/HORAYZON_extpar/plots/"
-path_out = "/scratch/mch/csteger/temp/"
+path_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
 # path_ige = "/Users/csteger/Dropbox/MeteoSwiss/Data/Miscellaneous/" \
 #     + "ICON_grids_EXTPAR/"
 # path_dem = "/Users/csteger/Dropbox/MeteoSwiss/Data/DEMs/Copernicus_DEM/"
@@ -37,25 +37,33 @@ path_out = "/scratch/mch/csteger/temp/"
 # Settings
 # -----------------------------------------------------------------------------
 
-# Select ICON resolution
-icon_res = "2km"  # "2km", "1km", "500m"
+# ICON test (2km)
+icon_res = "2km"
+icon_grid = "test/icon_grid_DOM01.nc"
+n_sel = 73 # mesh refinement level (identical to theoretical value)
+check_mesh = False # optional (computational intensive) mesh checking steps
+file_out = "ICON_refined_mesh_" + "test_" + icon_res + ".nc"
 
-# ICON grids
-# icon_grids = {"2km": "MeteoSwiss/icon_grid_0002_R19B07_mch.nc",
-#               "1km": "MeteoSwiss/icon_grid_0001_R19B08_mch.nc",
-#               "500m": "MeteoSwiss/icon_grid_00005_R19B09_DOM02.nc"}
-icon_grids = {"2km": "test/icon_grid_DOM01.nc"}
+# # ICON MCH (1km)
+# icon_res = "1km"
+# icon_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc"
+# n_sel = 33 # ('faces_child' < 16 GB)
+# check_mesh = False
+# file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
 
-# Output file name (part)
-# file_out = "ICON_refined_mesh_" + "test_" + icon_res + ".nc"
-file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
+# # ICON MCH (2km)
+# icon_res = "2km"
+# icon_grid = "MeteoSwiss/icon_grid_0002_R19B07_mch.nc"
+# n_sel = 66 # ('faces_child' < 16 GB)
+# check_mesh = False
+# file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
 
-# Optional (computational intensive) mesh checking steps
-check_mesh = False
-
-# Mesh refinement level
-n_sel = 73 # Test 2km -> 'faces' < 16 GB
-# n_sel = 33 # MCH 1km -> 'faces' < 16 GB
+# # ICON MCH (500m)
+# icon_res = "500m"
+# icon_grid = "MeteoSwiss/icon_grid_00005_R19B09_DOM02.nc"
+# n_sel = 18 # (identical to theoretical value)
+# check_mesh = False
+# file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
 
 # -----------------------------------------------------------------------------
 
@@ -65,7 +73,7 @@ print(f"DEM resolution: {(res_dem):.1f} m")
 cell_area_dem = res_dem ** 2  # [m2]
 
 # Load ICON grid with specific resolution
-ds = xr.open_dataset(path_ige + icon_grids[icon_res])
+ds = xr.open_dataset(path_ige + icon_grid)
 vlon = ds["vlon"].values
 vlat = ds["vlat"].values
 vertex_of_cell = ds["vertex_of_cell"].values - 1  # (3, num_cell; int32)
