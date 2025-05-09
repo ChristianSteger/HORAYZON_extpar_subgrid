@@ -18,16 +18,16 @@ from functions import refine_mesh_nc, alpha_minmax, centroid_values
 style.use("classic")
 
 # Paths
-path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
-    + "ICON_grids_EXTPAR/"
-path_dem = "/store_new/mch/msopr/csteger/Data/DEMs/Copernicus_DEM/"
-path_plot = "/scratch/mch/csteger/HORAYZON_extpar/plots/"
-path_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
-# path_ige = "/Users/csteger/Dropbox/MeteoSwiss/Data/Miscellaneous/" \
+# path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
 #     + "ICON_grids_EXTPAR/"
-# path_dem = "/Users/csteger/Dropbox/MeteoSwiss/Data/DEMs/Copernicus_DEM/"
-# path_plots = "/Users/csteger/Desktop/"
-# path_out = "/Users/csteger/Desktop/"
+# path_dem = "/store_new/mch/msopr/csteger/Data/DEMs/Copernicus_DEM/"
+# path_plot = "/scratch/mch/csteger/HORAYZON_extpar/plots/"
+# path_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
+path_ige = "/Users/csteger/Dropbox/MeteoSwiss/Data/Miscellaneous/" \
+    + "ICON_grids_EXTPAR/"
+path_dem = "/Users/csteger/Dropbox/MeteoSwiss/Data/DEMs/Copernicus_DEM/"
+path_plots = "/Users/csteger/Desktop/"
+path_out = "/Users/csteger/Desktop/"
 
 ###############################################################################
 # Load ICON grid data and pre-process
@@ -41,7 +41,7 @@ path_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
 icon_res = "2km"
 icon_grid = "test/icon_grid_DOM01.nc"
 n_sel = 73 # mesh refinement level (identical to theoretical value)
-check_mesh = False # optional (computational intensive) mesh checking steps
+check_mesh = True # optional (computational intensive) mesh checking steps
 file_out = "ICON_refined_mesh_" + "test_" + icon_res + ".nc"
 
 # # ICON MCH (1km)
@@ -152,9 +152,19 @@ if check_mesh:
 # -----------------------------------------------------------
 del centroids
 
-# ID of parent triangle
+# Index pointer linking child to parent triangles
+parent_indptr = np.empty(vertex_of_cell.shape[1] + 1, dtype=np.int32)
+parent_indptr[:-1] = np.arange(start=0, stop=faces_child.shape[0],
+                               step=(n_sel ** 2))
+parent_indptr[-1] = faces_child.shape[0]
+# ----------------------------------------------------------------------------- temporary -> check 'parent_indptr'
 parent_tri_id = np.repeat(np.arange(vertex_of_cell.shape[1]), n_sel ** 2) \
     .astype(np.int32)
+for i in range(parent_indptr.shape[0] - 1):
+    if not np.all(parent_tri_id[parent_indptr[i]:parent_indptr[i + 1]] \
+                  == i):
+        raise ValueError("Array 'parent_indptr' is erroneous")
+# -----------------------------------------------------------------------------
 
 # Compute spherical coordinates (longitude/latitude) of child vertices
 t_beg = perf_counter()
@@ -175,10 +185,10 @@ if check_mesh:
     triangles_child = tri.Triangulation(np.rad2deg(vlon_child),
                                         np.rad2deg(vlat_child),
                                         faces_child[:num_tri_child, :])
-    vmin = parent_tri_id[:num_tri_child].min()
-    vmax = parent_tri_id[:num_tri_child].max()
-    plt.tripcolor(triangles_child, facecolors=parent_tri_id[:num_tri_child],
-                cmap="Spectral", vmin=vmin, vmax=vmax, alpha=0.5)
+    parent_tri_id = np.repeat(np.arange(num_tri_parent), n_sel ** 2) \
+    .astype(np.int32)
+    plt.tripcolor(triangles_child, facecolors=parent_tri_id,
+                cmap="Spectral", vmin=0, vmax=(num_tri_parent - 1), alpha=0.5)
     plt.triplot(triangles_child, color="black", lw=0.8, ls=":")
     plt.show()
     del triangles, triangles_child
@@ -251,37 +261,39 @@ if check_mesh:
 # Write refined mesh to netCDF file
 t_beg = perf_counter()
 ncfile = Dataset(filename=path_out + file_out, mode="w", format="NETCDF4")
-ncfile.createDimension(dimname="num_vertex", size=vlon_child.size)
-ncfile.createDimension(dimname="num_cell", size=faces_child.shape[0])
+ncfile.createDimension(dimname="num_vertex_child", size=vlon_child.size)
+ncfile.createDimension(dimname="num_cell_child", size=faces_child.shape[0])
 ncfile.createDimension(dimname="tri_vertex", size=3)
+ncfile.createDimension(dimname="num_cell_parent_p1",
+                       size=vertex_of_cell.shape[1] + 1)
 # -----------------------------------------------------------------------------
 nc_data = ncfile.createVariable(varname="vlon", datatype="f8",
-                                dimensions=("num_vertex"))
+                                dimensions=("num_vertex_child"))
 nc_data.units = "radian"
 nc_data.long_name = "longitude of vertices"
 nc_data[:] = vlon_child
 # -----------------------------------------------------------------------------
 nc_data = ncfile.createVariable(varname="vlat", datatype="f8",
-                                dimensions=("num_vertex"))
+                                dimensions=("num_vertex_child"))
 nc_data.units = "radian"
 nc_data.long_name = "latitude of vertices"
 nc_data[:] = vlat_child
 # -----------------------------------------------------------------------------
 nc_data = ncfile.createVariable(varname="elevation", datatype="f4",
-                                dimensions=("num_vertex"))
+                                dimensions=("num_vertex_child"))
 nc_data.units = "m"
 nc_data.long_name = "elevation of vertices"
 nc_data[:] = velev_child
 # -----------------------------------------------------------------------------
 nc_data = ncfile.createVariable(varname="faces", datatype="i4",
-                                dimensions=("num_cell", "tri_vertex"))
+                                dimensions=("num_cell_child", "tri_vertex"))
 nc_data.long_name = "transposed vertex_of_cell"
 nc_data[:] = faces_child
 # -----------------------------------------------------------------------------
-nc_data = ncfile.createVariable(varname="parent_tri_id", datatype="i4",
-                                dimensions=("num_cell"))
-nc_data.long_name = "ID of parent triangle"
-nc_data[:] = parent_tri_id
+nc_data = ncfile.createVariable(varname="parent_indptr", datatype="i4",
+                                dimensions=("num_cell_parent_p1"))
+nc_data.long_name = "Index pointer linking child to parent triangles"
+nc_data[:] = parent_indptr
 # -----------------------------------------------------------------------------
 ncfile.close()
 t_end = perf_counter()
