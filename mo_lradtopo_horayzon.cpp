@@ -3,8 +3,6 @@
 #define _USE_MATH_DEFINES
 #include <cstdio>
 #include <iostream>
-// #include <sstream>  // Fortran interface
-// #include <cstring>  // Fortran interface
 #include <vector>
 #include <cmath>
 #include <chrono>
@@ -279,163 +277,6 @@ void ecef2enu_vector(std::vector<geom_vector>& vectors, double lon_orig,
     }
 }
 
-/**
- * @brief Builds the triangle mesh from the ICON grid.
- *
- * This function builds the triangle mesh from the ICON grid cell circumcenters
- * (and vertices). Two options are available:
- * - 0: Build triangle mesh solely from ICON grid cell circumcenters
- *      (non-unique triangulation of hexa- and pentagons; relatively long
- *      triangle edges can cause artefacts in horizon computation)
- * - 1: Build triangle mesh from ICON grid cell circumcenters and vertices
- *      (elevation at vertices is computed as mean from adjacent cell
- *      circumcenters; triangulation is unique and artefacts are reduced)
- *
- * @param clon Longitude of ICON grid cell circumcenters [rad].
- * @param clat Latitudes of ICON grid cell circumcenters [rad].
- * @param hsurf Elevation of ICON grid cell circumcenters [m].
- * @param vlon Longitude of ICON grid cell vertices [rad].
- * @param vlat Latitudes of ICON grid cell vertices [rad].
- * @param cells_of_vertex Indices of ICON cells adjacent to ICON vertices.
- * @param num_cell Number of ICON grid cells.
- * @param num_vertex Number of ICON grid vertices.
- * @param grid_type Grid type option for building mesh.
- * @param vertices Vertices of build triangle mesh.
- * @param vertex_of_triangle Indices of triangles' vertices.
- * @return Number of triangles in build mesh.
- */
-int build_triangle_mesh(double* clon, double* clat, double* hsurf,
-    double* vlon, double* vlat, int* cells_of_vertex,
-    int num_cell, int num_vertex, int grid_type,
-    std::vector<geom_point>& vertices, std::vector<int>& vertex_of_triangle){
-    int ind_cell;
-    int ind_cov;
-    for (int i = 0; i < num_cell; i++){
-        vertices[i].x = clon[i];
-        vertices[i].y = clat[i];
-        vertices[i].z = hsurf[i];
-    }
-    if (grid_type == 0) {
-        std::cout << "Build triangle mesh solely from ICON grid cell"
-            << " circumcenters\n (non-unique triangulation)" << std::endl;
-        int ind_1, ind_2;
-        for (int ind_vertex = 0; ind_vertex < num_vertex; ind_vertex++){
-            std::vector<double> angles;
-            angles.reserve(6);
-            for (int j = 0; j < 6; j++){
-                ind_cell = cells_of_vertex[num_vertex * j + ind_vertex];
-                if (ind_cell != -2) {
-                    double angle = atan2(clon[ind_cell] - vlon[ind_vertex],
-                                         clat[ind_cell] - vlat[ind_vertex]);
-                    // clockwise angle from positive latitude-axis (y-axis)
-                    if (angle < 0.0) {
-                        angle += 2.0 * M_PI;
-                    }
-                    angles.push_back(angle);
-                }
-            }
-            if (angles.size() >= 3){
-                // at least 3 vertices are needed to create one or multiple
-                // triangles(s) from the polygon
-                std::vector<int> ind_sort = sort_index(angles);
-                ind_1 = 1;
-                ind_2 = 2;
-                for (size_t j = 0; j < (angles.size() - 2); j++){
-                    ind_cov = num_vertex * ind_sort[0] + ind_vertex;
-                    vertex_of_triangle.push_back(cells_of_vertex[ind_cov]);
-                    ind_cov = num_vertex * ind_sort[ind_1] + ind_vertex;
-                    vertex_of_triangle.push_back(cells_of_vertex[ind_cov]);
-                    ind_1 ++;
-                    ind_cov = num_vertex * ind_sort[ind_2] + ind_vertex;
-                    vertex_of_triangle.push_back(cells_of_vertex[ind_cov]);
-                    ind_2 ++;
-                    // add indices of triangle's vertices in clockwise order
-                }
-            }
-        }
-    }  else {
-        std::cout << "Build triangle mesh from ICON grid cell circumcenters"
-            << " and vertices\n (unique triangulation)" << std::endl;
-        int ind_add = num_cell;
-        int ind[7] = {0, 1, 2, 3, 4, 5, 0};
-        for (int ind_vertex = 0; ind_vertex < num_vertex; ind_vertex++){
-            std::vector<double> angles;
-            angles.reserve(6);
-            double hsurf_mean = 0.0;
-            for (int j = 0; j < 6; j++){
-                ind_cell = cells_of_vertex[num_vertex * j + ind_vertex];
-                if (ind_cell != -2) {
-                    double angle = atan2(clon[ind_cell] - vlon[ind_vertex],
-                                         clat[ind_cell] - vlat[ind_vertex]);
-                    // clockwise angle from positive latitude-axis (y-axis)
-                    if (angle < 0.0) {
-                        angle += 2.0 * M_PI;
-                    }
-                    angles.push_back(angle);
-                    hsurf_mean += hsurf[ind_cell];
-                }
-            }
-            if (angles.size() == 6){
-                vertices.push_back({vlon[ind_vertex], vlat[ind_vertex],
-                                    hsurf_mean / 6.0});
-                std::vector<int> ind_sort = sort_index(angles);
-                for (int j = 0; j < 6; j++){
-                    ind_cov = num_vertex * ind_sort[ind[j]] + ind_vertex;
-                    vertex_of_triangle.push_back(cells_of_vertex[ind_cov]);
-                    ind_cov = num_vertex * ind_sort[ind[j + 1]] + ind_vertex;
-                    vertex_of_triangle.push_back(cells_of_vertex[ind_cov]);
-                    vertex_of_triangle.push_back(ind_add);
-                }
-                ind_add += 1;
-            }
-        }
-    }
-    int num_triangle = vertex_of_triangle.size() / 3;
-    std::cout << "Number of triangles in mesh: " << num_triangle << std::endl;
-    return num_triangle;
-}
-
-/**
- * @brief Computes the sky view factor for a horizontally aligned plane.
- *
- * This function computes the sky view factor (SVF) for a horizontally aligned
- * plane. Three methods are available:
- * - Visible sky fraction / pure geometric sky view factor
- * - Sky view factor / geometric scaled with sin(horizon)
- * - Sky view factor additionally scaled with sin(horizon) /
- *   geometric scaled with sin(horizon)**2
- *
- * @param horizon_cell Horizon array [rad].
- * @param horizon_cell_len Length of the horizon array.
- * @return Sky view factor [-].
- */
-double (*function_pointer)(double* horizon_cell, int horizon_cell_len);
-double pure_geometric_svf(double* horizon_cell, int horizon_cell_len){
-    double svf = 0.0;
-    for(int i = 0; i < horizon_cell_len; i++){
-        svf += (1.0 - sin(horizon_cell[i]));
-    }
-    svf /= (double)horizon_cell_len;
-    return svf;
-}
-double geometric_svf_scaled_1(double* horizon_cell, int horizon_cell_len){
-    double svf = 0.0;
-    for(int i = 0; i < horizon_cell_len; i++){
-        svf += (1.0 - (sin(horizon_cell[i]) * sin(horizon_cell[i])));
-    }
-    svf /= (double)horizon_cell_len;
-    return svf;
-}
-double geometric_svf_scaled_2(double* horizon_cell, int horizon_cell_len){
-    double svf = 0.0;
-    for(int i = 0; i < horizon_cell_len; i++){
-        svf += (1.0 - (sin(horizon_cell[i]) * sin(horizon_cell[i])
-            * sin(horizon_cell[i])));
-    }
-    svf /= (double)horizon_cell_len;
-    return svf;
-}
-
 //-----------------------------------------------------------------------------
 // Functions (Embree related)
 //-----------------------------------------------------------------------------
@@ -644,27 +485,17 @@ void terrain_horizon(float ray_org_x, float ray_org_y, float ray_org_z,
 // Main function
 //-----------------------------------------------------------------------------
 
-// extern "C" { // Fortran interface
-void horizon_svf_comp(double* clon, double* clat, double* hsurf,
-    double* vlon, double* vlat,
-    int* cells_of_vertex,
-    double* horizon, double* skyview,
-    int num_cell, int num_vertex, int azim_num,
-    int grid_type, double dist_search_dp,
-    double ray_org_elev, int refine_factor,
-    int svf_type){ // Fortran interface
-    // int svf_type, char* buffer, int* buffer_len){ // Fortran interface
-
-    // // Redirect std::cout (Fortran interface)
-    // std::stringstream string_stream;
-    // auto* old_buf = std::cout.rdbuf(string_stream.rdbuf());
+void horizon_svf_comp(double* vlon, double* vlat,
+    double* elevation,
+    int* faces,
+    int* parent_indptr,
+    float* f_cor,
+    int num_vertex, int num_cell, int num_cell_parent,
+    int azim_num, double dist_search_dp,
+    double ray_org_elev){
 
     // Fixed settings
     double hori_acc = deg2rad(0.25); // horizon accuracy [deg]
-    double elev_ang_thresh = deg2rad(-85.0);
-    // threshold for sampling in negative elevation angle direction [rad]
-    // - relevant for 'void sampling directions' at edge of mesh
-    // - necessary requirement: (elev_ang_thresh - (2.0 * hori_acc)) > -90.0
 
     // Constants
     double rad_earth = 6371229.0;  // ICON/COSMO earth radius [m]
@@ -679,46 +510,39 @@ void horizon_svf_comp(double* clon, double* clat, double* hsurf,
     std::cout << "------------------------------------------------------------"
         << "-------------------" << std::endl;
 
-    // Build triangle mesh from ICON grid
-    auto start_mesh = std::chrono::high_resolution_clock::now();
-    std::vector<geom_point> vertices(num_cell);
-    std::vector<int> vertex_of_triangle;
-    int num_triangle = build_triangle_mesh(clon, clat, hsurf,
-        vlon, vlat, cells_of_vertex,
-        num_cell, num_vertex, grid_type,
-        vertices, vertex_of_triangle);
-    auto end_mesh = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> time_mesh = end_mesh - start_mesh;
-    std::cout << std::setprecision(2) << std::fixed;
-    std::cout << "Triangle mesh building: " << time_mesh.count() << " s"
-        << std::endl;
-
     // In-place transformation from geographic to ECEF coordinates
-    lonlat2ecef(vertices, rad_earth);
-
-    // Sphere normals and north vectors for ICON grid cell circumcenters (ECEF)
-    std::vector<geom_vector> sphere_normals(num_cell);
-    for (int i = 0; i < num_cell; i++){
-        sphere_normals[i].x = vertices[i].x / rad_earth;
-        sphere_normals[i].y = vertices[i].y / rad_earth;
-        sphere_normals[i].z = vertices[i].z / rad_earth;
+    std::vector<geom_point> vertices(num_vertex);
+    for (int i = 0; i < num_vertex; i++){
+        vertices[i].x = vlon[i];
+        vertices[i].y = vlat[i];
+        vertices[i].z = elevation[i];
     }
-    std::vector<geom_vector> north_directions = north_direction(vertices,
-        sphere_normals, rad_earth);
+    lonlat2ecef(vertices, rad_earth);
+    std::cout << "vertices[0]:" << vertices[0].x << ", " << vertices[0].y << ", " << vertices[0].z << std::endl; // temporary
+
+    // Earth center and North Pole in ECEF coordinates
+    std::vector<geom_point> earth_centre(1);
+    earth_centre[0].x = 0.0;
+    earth_centre[0].y = 0.0;
+    earth_centre[0].z = 0.0;
+    std::vector<geom_point> north_pole(1);
+    north_pole[0].x = 0.0;
+    north_pole[0].y = 0.0;
+    north_pole[0].z = rad_earth;
 
     // Origin of ENU coordinate system
     double x_orig = 0.0;
     double y_orig = 0.0;
     double z_orig = 0.0;
-    for (int i = 0; i < num_cell; i++){
-        x_orig += sphere_normals[i].x;
-        y_orig += sphere_normals[i].y;
-        z_orig += sphere_normals[i].z;
+    for (int i = 0; i < num_vertex; i++){
+        x_orig += vertices[i].x;
+        y_orig += vertices[i].y;
+        z_orig += vertices[i].z;
     }
     double radius = sqrt(x_orig * x_orig + y_orig * y_orig + z_orig * z_orig);
     double lon_orig = atan2(y_orig, x_orig);
     double lat_orig = asin(z_orig / radius);
-    // works correctly for ICON domains containing the North/South Pole and/or
+    // works correctly for domains containing the North/South Pole and/or
     // crossing the +/- 180 deg meridian
 
     // In-place transformation from ECEF to ENU coordinates
@@ -726,126 +550,120 @@ void horizon_svf_comp(double* clon, double* clat, double* hsurf,
     std::cout << "Origin of ENU coordinate system: " << rad2deg(lat_orig)
         << " deg lat, "  << rad2deg(lon_orig) << " deg lon" << std::endl;
     ecef2enu_point(vertices, lon_orig, lat_orig, rad_earth);
-    ecef2enu_vector(sphere_normals, lon_orig, lat_orig);
-    ecef2enu_vector(north_directions, lon_orig, lat_orig);
+    ecef2enu_point(earth_centre, lon_orig, lat_orig, rad_earth);
+    ecef2enu_point(north_pole, lon_orig, lat_orig, rad_earth);
+
+    std::cout << "earth_centre (ENU):" << earth_centre[0].x << ", " << earth_centre[0].y << ", " << earth_centre[0].z << std::endl; // temporary
+    std::cout << "north_pole (ENU):" << north_pole[0].x << ", " << north_pole[0].y << ", " << north_pole[0].z << std::endl; // temporary
 
     // Build bounding volume hierarchy (BVH)
     RTCDevice device = initializeDevice();
-    RTCScene scene = initializeScene(device, vertex_of_triangle.data(),
-        num_triangle, vertices);
+    RTCScene scene = initializeScene(device, faces, num_cell, vertices);
 
-    // Evaluated trigonometric functions for rotation along azimuth/elevation
-    // angle
-    int horizon_cell_len = azim_num * refine_factor;
-    double azim_sin = sin(deg2rad(360.0) / (double)horizon_cell_len);
-    double azim_cos = cos(deg2rad(360.0) / (double)horizon_cell_len);
-    double elev_sin_2ha = sin(2.0 * hori_acc);
-    double elev_cos_2ha = cos(2.0 * hori_acc);
-    // Note: sin(-x) == -sin(x), cos(x) == cos(-x)
+    // // Evaluated trigonometric functions for rotation along azimuth/elevation
+    // // angle
+    // int horizon_cell_len = azim_num * refine_factor;
+    // double azim_sin = sin(deg2rad(360.0) / (double)horizon_cell_len);
+    // double azim_cos = cos(deg2rad(360.0) / (double)horizon_cell_len);
+    // double elev_sin_2ha = sin(2.0 * hori_acc);
+    // double elev_cos_2ha = cos(2.0 * hori_acc);
+    // // Note: sin(-x) == -sin(x), cos(x) == cos(-x)
 
-    // Compute shift for azimuth angle so that first azimuth sector is
-    // centred around 0.0 deg (North) in case of 'refine_factor' > 1
-    double azim_shift;
-    if (refine_factor == 1) {
-        azim_shift = 0.0;
-    } else {
-        azim_shift = -(deg2rad(360.0) / (2.0 * azim_num))
-            + (deg2rad(360.0) / (2.0 * (double)horizon_cell_len));
-    }
+    // // Compute shift for azimuth angle so that first azimuth sector is
+    // // centred around 0.0 deg (North) in case of 'refine_factor' > 1
+    // double azim_shift;
+    // if (refine_factor == 1) {
+    //     azim_shift = 0.0;
+    // } else {
+    //     azim_shift = -(deg2rad(360.0) / (2.0 * azim_num))
+    //         + (deg2rad(360.0) / (2.0 * (double)horizon_cell_len));
+    // }
 
-    // Select algorithm for sky view factor computation
-    std::cout << "Sky View Factor computation algorithm: ";
-    if (svf_type == 0) {
-        std::cout << "pure geometric SVF" << std::endl;
-        function_pointer = pure_geometric_svf;
-    } else if (svf_type == 1) {
-        std::cout << "geometric scaled with sin(horizon)" << std::endl;
-        function_pointer = geometric_svf_scaled_1;
-    } else if (svf_type == 2) {
-        std::cout << "geometric scaled with sin(horizon)**2" << std::endl;
-        function_pointer = geometric_svf_scaled_2;
-    }
+    // // Select algorithm for sky view factor computation
+    // std::cout << "Sky View Factor computation algorithm: ";
+    // if (svf_type == 0) {
+    //     std::cout << "pure geometric SVF" << std::endl;
+    //     function_pointer = pure_geometric_svf;
+    // } else if (svf_type == 1) {
+    //     std::cout << "geometric scaled with sin(horizon)" << std::endl;
+    //     function_pointer = geometric_svf_scaled_1;
+    // } else if (svf_type == 2) {
+    //     std::cout << "geometric scaled with sin(horizon)**2" << std::endl;
+    //     function_pointer = geometric_svf_scaled_2;
+    // }
 
-    auto start_ray = std::chrono::high_resolution_clock::now();
-    size_t num_rays = 0;
+    // auto start_ray = std::chrono::high_resolution_clock::now();
+    // size_t num_rays = 0;
 
-    num_rays += tbb::parallel_reduce(
-    tbb::blocked_range<size_t>(0, num_cell), 0.0,
-    [&](tbb::blocked_range<size_t> r, size_t num_rays) {  // parallel
+    // num_rays += tbb::parallel_reduce(
+    // tbb::blocked_range<size_t>(0, num_cell), 0.0,
+    // [&](tbb::blocked_range<size_t> r, size_t num_rays) {  // parallel
 
-    // for (size_t i = 0; i < (size_t)num_cell; i++){ // serial
-    for (size_t i=r.begin(); i<r.end(); ++i) {  // parallel
+    // // for (size_t i = 0; i < (size_t)num_cell; i++){ // serial
+    // for (size_t i=r.begin(); i<r.end(); ++i) {  // parallel
 
-        // Elevate origin for ray tracing by 'safety margin'
-        float ray_org_x = (float)(vertices[i].x
-            + sphere_normals[i].x * ray_org_elev);
-        float ray_org_y = (float)(vertices[i].y
-            + sphere_normals[i].y * ray_org_elev);
-        float ray_org_z = (float)(vertices[i].z
-            + sphere_normals[i].z * ray_org_elev);
-        // The origin of the ray is slightly elevated to avoid potential ray-
-        // terrain collisions near the origin due to numerical imprecisions.
+    //     // Elevate origin for ray tracing by 'safety margin'
+    //     float ray_org_x = (float)(vertices[i].x
+    //         + sphere_normals[i].x * ray_org_elev);
+    //     float ray_org_y = (float)(vertices[i].y
+    //         + sphere_normals[i].y * ray_org_elev);
+    //     float ray_org_z = (float)(vertices[i].z
+    //         + sphere_normals[i].z * ray_org_elev);
+    //     // The origin of the ray is slightly elevated to avoid potential ray-
+    //     // terrain collisions near the origin due to numerical imprecisions.
 
-        double* horizon_cell = new double[horizon_cell_len];  // [rad]
+    //     double* horizon_cell = new double[horizon_cell_len];  // [rad]
 
-        // Compute terrain horizon
-        terrain_horizon(ray_org_x, ray_org_y, ray_org_z,
-            hori_acc, dist_search, elev_ang_thresh,
-            scene, num_rays,
-            horizon_cell, horizon_cell_len,
-            azim_shift,
-            sphere_normals[i], north_directions[i],
-            azim_sin, azim_cos,
-            elev_sin_2ha, elev_cos_2ha);
+    //     // Compute terrain horizon
+    //     terrain_horizon(ray_org_x, ray_org_y, ray_org_z,
+    //         hori_acc, dist_search, elev_ang_thresh,
+    //         scene, num_rays,
+    //         horizon_cell, horizon_cell_len,
+    //         azim_shift,
+    //         sphere_normals[i], north_directions[i],
+    //         azim_sin, azim_cos,
+    //         elev_sin_2ha, elev_cos_2ha);
 
-        // Clip lower limit of terrain horizon values to 0.0
-        for(int j = 0; j < horizon_cell_len; j++){
-            if (horizon_cell[j] < 0.0){
-                horizon_cell[j] = 0.0;
-            }
-        }
+    //     // Clip lower limit of terrain horizon values to 0.0
+    //     for(int j = 0; j < horizon_cell_len; j++){
+    //         if (horizon_cell[j] < 0.0){
+    //             horizon_cell[j] = 0.0;
+    //         }
+    //     }
 
-        // Compute mean horizon for sector and save in 'horizon' buffer
-        for(int j = 0; j < azim_num; j++){
-            double horizon_mean = 0.0;
-            for(int k = 0; k < refine_factor; k++){
-                horizon_mean += horizon_cell[(j * refine_factor) + k];
-            }
-            horizon[(j * num_cell) + i] = (rad2deg(horizon_mean)
-                / (double)refine_factor);
-        }
+    //     // Compute mean horizon for sector and save in 'horizon' buffer
+    //     for(int j = 0; j < azim_num; j++){
+    //         double horizon_mean = 0.0;
+    //         for(int k = 0; k < refine_factor; k++){
+    //             horizon_mean += horizon_cell[(j * refine_factor) + k];
+    //         }
+    //         horizon[(j * num_cell) + i] = (rad2deg(horizon_mean)
+    //             / (double)refine_factor);
+    //     }
 
-        // Compute sky view factor and save in 'skyview' buffer
-        skyview[i] = function_pointer(horizon_cell, horizon_cell_len);
+    //     // Compute sky view factor and save in 'skyview' buffer
+    //     skyview[i] = function_pointer(horizon_cell, horizon_cell_len);
 
-        delete[] horizon_cell;
+    //     delete[] horizon_cell;
 
-    }
+    // }
 
-    return num_rays;  // parallel
-    }, std::plus<size_t>());  // parallel
+    // return num_rays;  // parallel
+    // }, std::plus<size_t>());  // parallel
 
-    auto end_ray = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> time_ray = end_ray - start_ray;
-    std::cout << std::setprecision(2) << std::fixed;
-    std::cout << "Ray tracing: " << time_ray.count() << " s" << std::endl;
+    // auto end_ray = std::chrono::high_resolution_clock::now();
+    // std::chrono::duration<double> time_ray = end_ray - start_ray;
+    // std::cout << std::setprecision(2) << std::fixed;
+    // std::cout << "Ray tracing: " << time_ray.count() << " s" << std::endl;
 
-    // Print number of rays needed for location and azimuth direction
-    std::cout << "Number of rays shot: " << num_rays << std::endl;
-    double ratio = (double)num_rays / (double)(num_cell * azim_num);
-    std::cout << std::setprecision(2) << std::fixed;
-    std::cout << "Average number of rays per cell and azimuth sector: "
-        << ratio << std::endl;
+    // // Print number of rays needed for location and azimuth direction
+    // std::cout << "Number of rays shot: " << num_rays << std::endl;
+    // double ratio = (double)num_rays / (double)(num_cell * azim_num);
+    // std::cout << std::setprecision(2) << std::fixed;
+    // std::cout << "Average number of rays per cell and azimuth sector: "
+    //     << ratio << std::endl;
 
-    std::cout << "------------------------------------------------------------"
-        << "-------------------" << std::endl;
-
-    // // Restore original std::cout and copy output to buffer (Fortran interface)
-    // std::cout.rdbuf(old_buf);
-    // std::string output = string_stream.str();
-    // int copy_len = std::min(*buffer_len, (int)output.size());
-    // std::memcpy(buffer, output.c_str(), copy_len);
-    // *buffer_len = copy_len;
+    // std::cout << "------------------------------------------------------------"
+    //     << "-------------------" << std::endl;
 
 }
-// } // Fortran interface
