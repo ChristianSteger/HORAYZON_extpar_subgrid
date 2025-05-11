@@ -1,4 +1,4 @@
-// C++ program to compute topographic horizon and sky view factor
+// C++ program to compute topographic horizon and f_cor
 
 #define _USE_MATH_DEFINES
 #include <cstdio>
@@ -488,9 +488,9 @@ void terrain_horizon(float ray_org_x, float ray_org_y, float ray_org_z,
 void horizon_svf_comp(double* vlon, double* vlat,
     double* elevation,
     int* faces,
-    int* parent_indptr,
     float* f_cor,
-    int num_vertex, int num_cell, int num_cell_parent,
+    int num_vertex, int num_cell,
+    int num_cell_parent, int num_cell_child_per_parent,
     int azim_num, double dist_search_dp,
     double ray_org_elev){
 
@@ -569,38 +569,33 @@ void horizon_svf_comp(double* vlon, double* vlat,
     // double elev_cos_2ha = cos(2.0 * hori_acc);
     // // Note: sin(-x) == -sin(x), cos(x) == cos(-x)
 
-    // // Compute shift for azimuth angle so that first azimuth sector is
-    // // centred around 0.0 deg (North) in case of 'refine_factor' > 1
-    // double azim_shift;
-    // if (refine_factor == 1) {
-    //     azim_shift = 0.0;
-    // } else {
-    //     azim_shift = -(deg2rad(360.0) / (2.0 * azim_num))
-    //         + (deg2rad(360.0) / (2.0 * (double)horizon_cell_len));
-    // }
-
-    // // Select algorithm for sky view factor computation
-    // std::cout << "Sky View Factor computation algorithm: ";
-    // if (svf_type == 0) {
-    //     std::cout << "pure geometric SVF" << std::endl;
-    //     function_pointer = pure_geometric_svf;
-    // } else if (svf_type == 1) {
-    //     std::cout << "geometric scaled with sin(horizon)" << std::endl;
-    //     function_pointer = geometric_svf_scaled_1;
-    // } else if (svf_type == 2) {
-    //     std::cout << "geometric scaled with sin(horizon)**2" << std::endl;
-    //     function_pointer = geometric_svf_scaled_2;
-    // }
-
-    // auto start_ray = std::chrono::high_resolution_clock::now();
-    // size_t num_rays = 0;
+    auto start_ray = std::chrono::high_resolution_clock::now();
+    size_t num_rays = 0;
 
     // num_rays += tbb::parallel_reduce(
-    // tbb::blocked_range<size_t>(0, num_cell), 0.0,
+    // tbb::blocked_range<size_t>(0, num_cell_parent), 0.0,
     // [&](tbb::blocked_range<size_t> r, size_t num_rays) {  // parallel
 
-    // // for (size_t i = 0; i < (size_t)num_cell; i++){ // serial
+    // Loop through parent cells
+    for (size_t i = 0; i < (size_t)num_cell_parent; i++){ // serial
     // for (size_t i=r.begin(); i<r.end(); ++i) {  // parallel
+
+
+
+        // Loop through child cells
+        for (size_t j = 0; j < (size_t)num_cell_parent; j++){
+
+            // Compute cell (triangle) centroid, sphere normal and
+            // north direction
+            int ind_cell = i * num_cell_child_per_parent + j;
+
+            geom_point cell_centroid;
+            geom_point vertex_0 = {vertices[faces[(i * 3) + 0]].x,
+                vertices[faces[(i * 3) + 0]].x,
+                vertices[faces[(i * 3) + 0]].x};
+
+            geom_vector sphere_normal;
+            geom_vector north_direction;
 
     //     // Elevate origin for ray tracing by 'safety margin'
     //     float ray_org_x = (float)(vertices[i].x
@@ -641,23 +636,22 @@ void horizon_svf_comp(double* vlon, double* vlat,
     //             / (double)refine_factor);
     //     }
 
-    //     // Compute sky view factor and save in 'skyview' buffer
-    //     skyview[i] = function_pointer(horizon_cell, horizon_cell_len);
-
     //     delete[] horizon_cell;
 
-    // }
+        }
+
+    }
 
     // return num_rays;  // parallel
     // }, std::plus<size_t>());  // parallel
 
-    // auto end_ray = std::chrono::high_resolution_clock::now();
-    // std::chrono::duration<double> time_ray = end_ray - start_ray;
-    // std::cout << std::setprecision(2) << std::fixed;
-    // std::cout << "Ray tracing: " << time_ray.count() << " s" << std::endl;
+    auto end_ray = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> time_ray = end_ray - start_ray;
+    std::cout << std::setprecision(2) << std::fixed;
+    std::cout << "Ray tracing: " << time_ray.count() << " s" << std::endl;
 
-    // // Print number of rays needed for location and azimuth direction
-    // std::cout << "Number of rays shot: " << num_rays << std::endl;
+    // Print number of rays needed for location and azimuth direction
+    std::cout << "Number of rays shot: " << num_rays << std::endl;
     // double ratio = (double)num_rays / (double)(num_cell * azim_num);
     // std::cout << std::setprecision(2) << std::fixed;
     // std::cout << "Average number of rays per cell and azimuth sector: "

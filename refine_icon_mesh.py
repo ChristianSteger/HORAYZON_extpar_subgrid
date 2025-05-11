@@ -40,7 +40,8 @@ path_out = "/Users/csteger/Desktop/"
 # ICON test (2km)
 icon_res = "2km"
 icon_grid = "test/icon_grid_DOM01.nc"
-n_sel = 73 # mesh refinement level (identical to theoretical value)
+# n_sel = 73 # mesh refinement level (identical to theoretical value)
+n_sel = 36 #################################################################### temporary for testing
 check_mesh = True # optional (computational intensive) mesh checking steps
 file_out = "ICON_refined_mesh_" + "test_" + icon_res + ".nc"
 
@@ -152,19 +153,9 @@ if check_mesh:
 # -----------------------------------------------------------
 del centroids
 
-# Index pointer linking child to parent triangles
-parent_indptr = np.empty(vertex_of_cell.shape[1] + 1, dtype=np.int32)
-parent_indptr[:-1] = np.arange(start=0, stop=faces_child.shape[0],
-                               step=(n_sel ** 2))
-parent_indptr[-1] = faces_child.shape[0]
-# ----------------------------------------------------------------------------- temporary -> check 'parent_indptr'
-parent_tri_id = np.repeat(np.arange(vertex_of_cell.shape[1]), n_sel ** 2) \
-    .astype(np.int32)
-for i in range(parent_indptr.shape[0] - 1):
-    if not np.all(parent_tri_id[parent_indptr[i]:parent_indptr[i + 1]] \
-                  == i):
-        raise ValueError("Array 'parent_indptr' is erroneous")
-# -----------------------------------------------------------------------------
+# Values relevant for child-parent triangle relation
+num_cell_parent = vertex_of_cell.shape[1]
+num_cell_child_per_parent = n_sel ** 2
 
 # Compute spherical coordinates (longitude/latitude) of child vertices
 t_beg = perf_counter()
@@ -180,8 +171,8 @@ if check_mesh:
     triangles = tri.Triangulation(np.rad2deg(vlon), np.rad2deg(vlat),
                                 vertex_of_cell.transpose())
     plt.triplot(triangles, color="black", lw=0.8, ls="-")
-    num_tri_parent = 10
-    num_tri_child = num_tri_parent * (n_sel ** 2)
+    num_tri_parent = 17 # maximal: 'num_cell_parent'
+    num_tri_child = num_tri_parent * num_cell_child_per_parent
     triangles_child = tri.Triangulation(np.rad2deg(vlon_child),
                                         np.rad2deg(vlat_child),
                                         faces_child[:num_tri_child, :])
@@ -264,8 +255,6 @@ ncfile = Dataset(filename=path_out + file_out, mode="w", format="NETCDF4")
 ncfile.createDimension(dimname="num_vertex_child", size=vlon_child.size)
 ncfile.createDimension(dimname="num_cell_child", size=faces_child.shape[0])
 ncfile.createDimension(dimname="tri_vertex", size=3)
-ncfile.createDimension(dimname="num_cell_parent_p1",
-                       size=vertex_of_cell.shape[1] + 1)
 # -----------------------------------------------------------------------------
 nc_data = ncfile.createVariable(varname="vlon", datatype="f8",
                                 dimensions=("num_vertex_child"))
@@ -290,10 +279,10 @@ nc_data = ncfile.createVariable(varname="faces", datatype="i4",
 nc_data.long_name = "transposed vertex_of_cell"
 nc_data[:] = faces_child
 # -----------------------------------------------------------------------------
-nc_data = ncfile.createVariable(varname="parent_indptr", datatype="i4",
-                                dimensions=("num_cell_parent_p1"))
-nc_data.long_name = "Index pointer linking child to parent triangles"
-nc_data[:] = parent_indptr
+nc_int = ncfile.createVariable("num_cell_parent", "i4")
+nc_int.assignValue(num_cell_parent)
+nc_int = ncfile.createVariable("num_cell_child_per_parent", "i4")
+nc_int.assignValue(num_cell_child_per_parent)
 # -----------------------------------------------------------------------------
 ncfile.close()
 t_end = perf_counter()

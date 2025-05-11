@@ -40,7 +40,8 @@ vlon = ds["vlon"].values # (num_vertex; float64)
 vlat = ds["vlat"].values # (num_vertex; float64)
 elevation = ds["elevation"].values # (num_vertex; float32)
 faces = ds["faces"].values # (num_cell, 3; int32) (transposed 'vertex_of_cell')
-parent_indptr = ds["parent_indptr"].values # (num_cell; int32)
+num_cell_parent = int(ds["num_cell_parent"])
+num_cell_child_per_parent = int(ds["num_cell_child_per_parent"])
 ds.close()
 
 # -----------------------------------------------------------------------------
@@ -48,7 +49,7 @@ ds.close()
 # -----------------------------------------------------------------------------
 
 num_tri_parent = 13
-num_tri_child = parent_indptr[num_tri_parent]
+num_tri_child = num_tri_parent * num_cell_child_per_parent
 triangles = tri.Triangulation(np.rad2deg(vlon), np.rad2deg(vlat),
                                  faces[:num_tri_child, :])
 
@@ -58,17 +59,6 @@ plt.figure(figsize=(10, 10))
 plt.tripcolor(triangles, elevation_centroids[:num_tri_child], cmap="terrain",
               vmin=elevation_centroids[:num_tri_child].min(),
               vmax=elevation_centroids[:num_tri_child].max(),
-              edgecolors="black", linewidth=0.1)
-plt.show()
-
-# Parent ID
-tri_child = np.diff(parent_indptr[:2])
-parent_tri_id = np.repeat(np.arange(num_tri_parent), tri_child) \
-    .astype(np.int32)
-plt.figure(figsize=(10, 10))
-plt.tripcolor(triangles, parent_tri_id, cmap="Spectral",
-              vmin=parent_tri_id[:num_tri_child].min(),
-              vmax=parent_tri_id[:num_tri_child].max(),
               edgecolors="black", linewidth=0.1)
 plt.show()
 
@@ -86,7 +76,7 @@ f_cor = horizon_svf_comp_py(
         vlon, vlat,
         elevation.astype(np.float64),
         faces,
-        parent_indptr,
+        num_cell_parent, num_cell_child_per_parent,
         num_hori, dist_search,
         ray_org_elev)
 
