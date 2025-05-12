@@ -70,15 +70,39 @@ plt.show()
 num_hori = 24 # number of azimuth angles
 dist_search = 40_000.0 #  horizon search distance [m]
 ray_org_elev = 0.2 # 0.1, 0.2 [m]
+ind_hori_out = np.array([0, 1, 5, 10, 3_000, 21_000, 101_000, 3], dtype=np.int32)
+# output horizon for specific locations
 
 # Compute f_cor
-f_cor = horizon_svf_comp_py(
-        vlon, vlat,
-        elevation.astype(np.float64),
-        faces,
-        num_cell_parent, num_cell_child_per_parent,
-        num_hori, dist_search,
-        ray_org_elev)
+f_cor, horizon_out = horizon_svf_comp_py(
+    vlon, vlat,
+    elevation.astype(np.float64),
+    faces,
+    ind_hori_out,
+    num_cell_parent, num_cell_child_per_parent,
+    num_hori, dist_search,
+    ray_org_elev)
+
+# Test plot f_cor
+azim = np.arange(0.0, 360.0, 360 // num_hori)
+elev = np.linspace(0.0, 90.0, 91)
+ind = 3334
+plt.figure(figsize=(14, 6))
+plt.pcolormesh(azim, elev, f_cor[ind, :, :].transpose(), vmin=0.0, vmax=2.0,
+               cmap="RdBu_r")
+plt.axis((0.0, 345.0, 0.0, 70.0))
+plt.colorbar()
+plt.show()
+
+plt.figure()
+plt.plot(elev, f_cor[ind, 16, :])
+plt.show()
+
+# Test plot horizon
+plt.figure()
+for i in range(ind_hori_out.size):
+        plt.plot(azim, horizon_out[i, :])
+plt.show()
 
 # -----------------------------------------------------------------------------
 # Temporary stuff to check C++ code...
@@ -100,6 +124,21 @@ f_cor = horizon_svf_comp_py(
 # y = rad_earth * np.cos(np.deg2rad(45.1216))
 # z = rad_earth - rad_earth * np.sin(np.deg2rad(45.1216))
 # print("North Pole: ", y, z)
+
+# for i in range(num_cell_parent):
+#     for j in range(num_cell_child_per_parent):
+#         ind_cell = i * num_cell_child_per_parent + j
+# print(ind_cell)
+
+elev_num = 91
+elev_spac = np.deg2rad(90.0) / float(elev_num - 1)
+
+elev_ang = 0.0
+for m in range(elev_num -1):
+    elev_ang += elev_spac
+    print(np.rad2deg(elev_ang), m)
+
+
 
 # -----------------------------------------------------------------------------
 

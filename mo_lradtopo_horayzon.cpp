@@ -1,4 +1,4 @@
-// C++ program to compute topographic horizon and f_cor
+// C++ program to compute topographic horizon and sw_dir_cor
 
 #define _USE_MATH_DEFINES
 #include <cstdio>
@@ -128,37 +128,33 @@ inline geom_vector vector_rotation(geom_vector v, geom_vector k,
 }
 
 /**
- * @brief Multiplies a matrix and a vector.
- * @param v_in Input vector.
- * @param matrix 3x3 matrix.
- * @return Output vector.
+ * @brief Returns index of element in array. If not found, returns -1.
+ * @param element Search element.
+ * @param array Input array.
+ * @param array_len Length of array.
+ * @return Index of element in array.
  */
-inline geom_vector vector_matrix_multiplication(geom_vector v_in,
-    double matrix[3][3]) {
-    geom_vector v_out;
-    v_out.x = matrix[0][0] * v_in.x + matrix[0][1] * v_in.y
-        + matrix[0][2] * v_in.z;
-    v_out.y = matrix[1][0] * v_in.x + matrix[1][1] * v_in.y
-        + matrix[1][2] * v_in.z;
-    v_out.z = matrix[2][0] * v_in.x + matrix[2][1] * v_in.y
-        + matrix[2][2] * v_in.z;
-    return v_out;
+int element_in_array(int element, int* array, int array_len){
+    for (int i = 0; i < array_len; i++){
+        if (array[i] == element){
+            return i;
+        }
+    }
+    return -1;
 }
 
 /**
- * @brief Returns indices that would sort an array in ascending order.
- * @param values Input values.
- * @return Indices that would sort the array.
+ * @brief Computes the linear index from subscripts (3D-array)
+ * @param dim_1 second dimension length of the array
+ * @param dim_2 third dimension length of the array
+ * @param ind_0 first array indices
+ * @param ind_1 second array indices
+ * @param ind_2 third array indices
+ * @return Linear index.
  */
-std::vector<int> sort_index(std::vector<double>& values){
-	std::vector<int> index(values.size());
-     for (size_t i = 0 ; i < index.size() ; i++) {
-        index[i] = i;
-    }
-    std::sort(index.begin(), index.end(), [&](const int& a, const int& b){
-        return (values[a] < values[b]);
-    });
-	return index;
+inline size_t lin_ind_3d(size_t dim_1, size_t dim_2, size_t ind_0,
+    size_t ind_1, size_t ind_2) {
+	return (ind_0 * (dim_1 * dim_2) + ind_1 * dim_2 + ind_2);
 }
 
 /**
@@ -182,39 +178,6 @@ void lonlat2ecef(std::vector<geom_point>& points, double rad_earth){
         points[i].y = (rad_earth + elevation) * cos_lat * sin_lon;
         points[i].z = (rad_earth + elevation) * sin_lat;
     }
-}
-
-/**
- * @brief Computes tangential north vectors for points on a sphere.
- *
- * This function computes unit vectors for points in earth-centered,
- * earth-fixed (ECEF) coordinates that point towards North and are
- * perpendicular to the sphere's normals.
- *
- * @param points Points (x, y, z) in ECEF coordinates [m].
- * @param sphere_normals Sphere normals (x, y, z) at the point locations in
- *                       ECEF coordinates [m].
- * @param rad_earth Radius of Earth [m].
- * @return North directions (x, y, z) in ECEF coordinates [m].
- */
-std::vector<geom_vector> north_direction(std::vector<geom_point> points,
-    std::vector<geom_vector> sphere_normals, double rad_earth){
-    geom_vector v_p = {0.0, 0.0, rad_earth}; // north pole in ECEF coordinates
-	std::vector<geom_vector> north_directions(sphere_normals.size());
-    geom_vector v_n, v_j;
-    double dot_prod;
-    for (size_t i = 0; i < sphere_normals.size(); i++){
-        v_n.x = v_p.x - points[i].x;
-        v_n.y = v_p.y - points[i].y;
-        v_n.z = v_p.z - points[i].z;
-        dot_prod = dot_product(v_n, sphere_normals[i]);
-        v_j.x = v_n.x - dot_prod * sphere_normals[i].x;
-        v_j.y = v_n.y - dot_prod * sphere_normals[i].y;
-        v_j.z = v_n.z - dot_prod * sphere_normals[i].z;
-        unit_vector(v_j);
-        north_directions[i] = v_j;
-    }
-    return north_directions;
 }
 
 /**
@@ -246,34 +209,6 @@ void ecef2enu_point(std::vector<geom_point>& points, double lon_orig,
         points[i].x = x_enu;
         points[i].y = y_enu;
         points[i].z = z_enu;
-    }
-}
-
-/**
- * @brief Transforms vectors from ECEF to ENU coordinates in-place.
- * @param vectors Vectors (x, y, z) in ECEF coordinates [m].
- * @param lon_orig Longitude of ENU coordinate system origin [rad].
- * @param lat_orig Latitude of ENU coordinate system origin [rad].
- */
-void ecef2enu_vector(std::vector<geom_vector>& vectors, double lon_orig,
-    double lat_orig){
-    double sin_lon = sin(lon_orig);
-    double cos_lon = cos(lon_orig);
-    double sin_lat = sin(lat_orig);
-    double cos_lat = cos(lat_orig);
-    double x_enu, y_enu, z_enu;
-    for (size_t i = 0; i < vectors.size(); i++){
-        x_enu = - sin_lon * vectors[i].x
-            + cos_lon * vectors[i].y;
-        y_enu = - sin_lat * cos_lon * vectors[i].x
-            - sin_lat * sin_lon * vectors[i].y
-            + cos_lat * vectors[i].z;
-        z_enu = + cos_lat * cos_lon * vectors[i].x
-            + cos_lat * sin_lon * vectors[i].y
-            + sin_lat * vectors[i].z;
-        vectors[i].x = x_enu;
-        vectors[i].y = y_enu;
-        vectors[i].z = z_enu;
     }
 }
 
@@ -405,8 +340,7 @@ bool castRay_occluded1(RTCScene scene, float ox, float oy, float oz, float dx,
  * @param scene Embree scene.
  * @param num_rays Number of rays casted.
  * @param horizon_cell Horizon array [rad].
- * @param horizon_cell_len Length of the horizon array.
- * @param azim_shift Azimuth shift for the first azimuth sector [rad].
+ * @param azim_num Length of the horizon array.
  * @param sphere_normal Sphere normal at the point location [m].
  * @param north_direction North direction at the point location [m].
  * @param azim_sin Sine of the azimuth angle spacing.
@@ -417,8 +351,7 @@ bool castRay_occluded1(RTCScene scene, float ox, float oy, float oz, float dx,
 void terrain_horizon(float ray_org_x, float ray_org_y, float ray_org_z,
     double hori_acc, float dist_search, double elev_ang_thresh,
     RTCScene scene, size_t &num_rays,
-    double* horizon_cell, int horizon_cell_len,
-    double azim_shift,
+    double* horizon_cell, int azim_num,
     geom_vector sphere_normal, geom_vector north_direction,
     double azim_sin, double azim_cos,
     double elev_sin_2ha, double elev_cos_2ha){
@@ -429,14 +362,9 @@ void terrain_horizon(float ray_org_x, float ray_org_y, float ray_org_z,
     ray_dir.y = north_direction.y;
     ray_dir.z = north_direction.z;
 
-    // Shift azimuth angle in case of 'refine_factor' > 1 so that first
-    // azimuth sector is centred around 0.0 deg (North)
-    ray_dir = vector_rotation(ray_dir, sphere_normal, sin(-azim_shift),
-        cos(-azim_shift));
-
     // Sample along azimuth
     double elev_ang = 0.0;
-    for (int i = 0; i < horizon_cell_len; i++){
+    for (int i = 0; i < azim_num; i++){
 
         // Rotation axis
         geom_vector rot_axis = cross_product(ray_dir, sphere_normal);
@@ -488,14 +416,23 @@ void terrain_horizon(float ray_org_x, float ray_org_y, float ray_org_z,
 void horizon_svf_comp(double* vlon, double* vlat,
     double* elevation,
     int* faces,
+    int* ind_hori_out,
     float* f_cor,
-    int num_vertex, int num_cell,
+    double* horizon_out,
+    int num_vertex, int num_cell, int num_hori_out,
     int num_cell_parent, int num_cell_child_per_parent,
     int azim_num, double dist_search_dp,
     double ray_org_elev){
 
     // Fixed settings
-    double hori_acc = deg2rad(0.25); // horizon accuracy [deg]
+    double hori_acc = deg2rad(0.25); // horizon accuracy [rad]
+    double elev_ang_thresh = deg2rad(-85.0);
+    // threshold for sampling in negative elevation angle direction [rad]
+    // - relevant for 'void sampling directions' at edge of mesh
+    // - necessary requirement: (elev_ang_thresh - (2.0 * hori_acc)) > -90.0  # probably obsolete when ray casting at triangle centroids...
+    int elev_num = 91; // number of elevation angles for sw_dir_cor computation
+    double sw_dir_cor_max = 25.0; // maximum value for sw_dir_cor [-]
+    bool cons_area_factor = true; // use area factor for sw_dir_cor
 
     // Constants
     double rad_earth = 6371229.0;  // ICON/COSMO earth radius [m]
@@ -518,7 +455,6 @@ void horizon_svf_comp(double* vlon, double* vlat,
         vertices[i].z = elevation[i];
     }
     lonlat2ecef(vertices, rad_earth);
-    std::cout << "vertices[0]:" << vertices[0].x << ", " << vertices[0].y << ", " << vertices[0].z << std::endl; // temporary
 
     // Earth center and North Pole in ECEF coordinates
     std::vector<geom_point> earth_centre(1);
@@ -553,97 +489,197 @@ void horizon_svf_comp(double* vlon, double* vlat,
     ecef2enu_point(earth_centre, lon_orig, lat_orig, rad_earth);
     ecef2enu_point(north_pole, lon_orig, lat_orig, rad_earth);
 
-    std::cout << "earth_centre (ENU):" << earth_centre[0].x << ", " << earth_centre[0].y << ", " << earth_centre[0].z << std::endl; // temporary
-    std::cout << "north_pole (ENU):" << north_pole[0].x << ", " << north_pole[0].y << ", " << north_pole[0].z << std::endl; // temporary
-
     // Build bounding volume hierarchy (BVH)
     RTCDevice device = initializeDevice();
     RTCScene scene = initializeScene(device, faces, num_cell, vertices);
 
-    // // Evaluated trigonometric functions for rotation along azimuth/elevation
-    // // angle
-    // int horizon_cell_len = azim_num * refine_factor;
-    // double azim_sin = sin(deg2rad(360.0) / (double)horizon_cell_len);
-    // double azim_cos = cos(deg2rad(360.0) / (double)horizon_cell_len);
-    // double elev_sin_2ha = sin(2.0 * hori_acc);
-    // double elev_cos_2ha = cos(2.0 * hori_acc);
-    // // Note: sin(-x) == -sin(x), cos(x) == cos(-x)
+    // Evaluated trigonometric functions for rotation along azimuth/elevation
+    // angle
+    double azim_sin = sin(deg2rad(360.0) / (double)azim_num);
+    double azim_cos = cos(deg2rad(360.0) / (double)azim_num);
+    double elev_sin_2ha = sin(2.0 * hori_acc);
+    double elev_cos_2ha = cos(2.0 * hori_acc);
+    // Note: sin(-x) == -sin(x), cos(x) == cos(-x)
+    double elev_spac = deg2rad(90.0) / (double)(elev_num - 1);
+    double elev_sin_sun = sin(elev_spac);
+    double elev_cos_sun = cos(elev_spac);
 
     auto start_ray = std::chrono::high_resolution_clock::now();
     size_t num_rays = 0;
 
-    // num_rays += tbb::parallel_reduce(
-    // tbb::blocked_range<size_t>(0, num_cell_parent), 0.0,
-    // [&](tbb::blocked_range<size_t> r, size_t num_rays) {  // parallel
+    num_rays += tbb::parallel_reduce(
+    tbb::blocked_range<size_t>(0, 5000), 0.0,
+    [&](tbb::blocked_range<size_t> r, size_t num_rays) {  // parallel (100 should be 'num_cell_parent') temporary!!!
 
     // Loop through parent cells
-    for (size_t i = 0; i < (size_t)num_cell_parent; i++){ // serial
-    // for (size_t i=r.begin(); i<r.end(); ++i) {  // parallel
-
-
+    // for (size_t i = 0; i < (size_t)num_cell_parent; i++){ // serial  ########## temporary !!!
+    //for (size_t i = 0; i < 100; i++){ // serial
+    for (size_t i=r.begin(); i<r.end(); ++i) {  // parallel
 
         // Loop through child cells
-        for (size_t j = 0; j < (size_t)num_cell_parent; j++){
+         for (size_t j = 0; j < (size_t)num_cell_child_per_parent; j++){  // temporary
+        // for (size_t j = 0; j < 1; j++){
 
-            // Compute cell (triangle) centroid, sphere normal and
-            // north direction
             int ind_cell = i * num_cell_child_per_parent + j;
 
-            geom_point cell_centroid;
-            geom_point vertex_0 = {vertices[faces[(i * 3) + 0]].x,
-                vertices[faces[(i * 3) + 0]].x,
-                vertices[faces[(i * 3) + 0]].x};
+            // Compute cell (triangle) centroid
+            geom_point vertex_0 = {vertices[faces[(ind_cell * 3) + 0]].x,
+                                   vertices[faces[(ind_cell * 3) + 0]].y,
+                                   vertices[faces[(ind_cell * 3) + 0]].z};
+            geom_point vertex_1 = {vertices[faces[(ind_cell * 3) + 1]].x,
+                                   vertices[faces[(ind_cell * 3) + 1]].y,
+                                   vertices[faces[(ind_cell * 3) + 1]].z};
+            geom_point vertex_2 = {vertices[faces[(ind_cell * 3) + 2]].x,
+                                   vertices[faces[(ind_cell * 3) + 2]].y,
+                                   vertices[faces[(ind_cell * 3) + 2]].z};
+            geom_point cell_centroid = {
+                (vertex_0.x + vertex_1.x + vertex_2.x) / 3.0,
+                (vertex_0.y + vertex_1.y + vertex_2.y) / 3.0,
+                (vertex_0.z + vertex_1.z + vertex_2.z) / 3.0
+            };
 
-            geom_vector sphere_normal;
+            // Compute sphere normal
+            geom_vector sphere_normal = {
+                (cell_centroid.x - earth_centre[0].x),
+                (cell_centroid.y - earth_centre[0].y),
+                (cell_centroid.z - earth_centre[0].z)
+            };
+            unit_vector(sphere_normal);
+
+            // Compute north direction (orthogonal to sphere normal)
             geom_vector north_direction;
+            geom_vector v_n;
+            double dot_prod;
+            v_n.x = north_pole[0].x - cell_centroid.x;
+            v_n.y = north_pole[0].y - cell_centroid.y;
+            v_n.z = north_pole[0].z - cell_centroid.z;
+            dot_prod = dot_product(v_n, sphere_normal);
+            north_direction.x = v_n.x - dot_prod * sphere_normal.x;
+            north_direction.y = v_n.y - dot_prod * sphere_normal.y;
+            north_direction.z = v_n.z - dot_prod * sphere_normal.z;
+            unit_vector(north_direction);
 
-    //     // Elevate origin for ray tracing by 'safety margin'
-    //     float ray_org_x = (float)(vertices[i].x
-    //         + sphere_normals[i].x * ray_org_elev);
-    //     float ray_org_y = (float)(vertices[i].y
-    //         + sphere_normals[i].y * ray_org_elev);
-    //     float ray_org_z = (float)(vertices[i].z
-    //         + sphere_normals[i].z * ray_org_elev);
-    //     // The origin of the ray is slightly elevated to avoid potential ray-
-    //     // terrain collisions near the origin due to numerical imprecisions.
+            // Elevate origin for ray tracing by 'safety margin'
+            float ray_org_x = (float)(cell_centroid.x
+                + sphere_normal.x * ray_org_elev);
+            float ray_org_y = (float)(cell_centroid.y
+                + sphere_normal.y * ray_org_elev);
+            float ray_org_z = (float)(cell_centroid.z
+                + sphere_normal.z * ray_org_elev);
+            // The origin of the ray is slightly elevated to avoid potential
+            // ray-terrain collisions near the origin due to numerical
+            // imprecisions.
 
-    //     double* horizon_cell = new double[horizon_cell_len];  // [rad]
+            double* horizon_cell = new double[azim_num];  // [rad]
 
-    //     // Compute terrain horizon
-    //     terrain_horizon(ray_org_x, ray_org_y, ray_org_z,
-    //         hori_acc, dist_search, elev_ang_thresh,
-    //         scene, num_rays,
-    //         horizon_cell, horizon_cell_len,
-    //         azim_shift,
-    //         sphere_normals[i], north_directions[i],
-    //         azim_sin, azim_cos,
-    //         elev_sin_2ha, elev_cos_2ha);
+            // Compute terrain horizon
+            terrain_horizon(ray_org_x, ray_org_y, ray_org_z,
+                hori_acc, dist_search, elev_ang_thresh,
+                scene, num_rays,
+                horizon_cell, azim_num,
+                sphere_normal, north_direction,
+                azim_sin, azim_cos,
+                elev_sin_2ha, elev_cos_2ha);
 
-    //     // Clip lower limit of terrain horizon values to 0.0
-    //     for(int j = 0; j < horizon_cell_len; j++){
-    //         if (horizon_cell[j] < 0.0){
-    //             horizon_cell[j] = 0.0;
-    //         }
-    //     }
+            // Store horizon for certain cells in output array
+            int index = element_in_array(ind_cell, ind_hori_out, num_hori_out); // inefficient for larger 'ind_hori_out'!
+            if (index != -1){
+                for (int k = 0; k < azim_num; k++){
+                    horizon_out[index * azim_num + k] = rad2deg(horizon_cell[k]);
+                }
+            }
 
-    //     // Compute mean horizon for sector and save in 'horizon' buffer
-    //     for(int j = 0; j < azim_num; j++){
-    //         double horizon_mean = 0.0;
-    //         for(int k = 0; k < refine_factor; k++){
-    //             horizon_mean += horizon_cell[(j * refine_factor) + k];
-    //         }
-    //         horizon[(j * num_cell) + i] = (rad2deg(horizon_mean)
-    //             / (double)refine_factor);
-    //     }
+            // Compute triangle normal
+            geom_vector a = {vertex_2.x - vertex_1.x,
+                             vertex_2.y - vertex_1.y,
+                             vertex_2.z - vertex_1.z};
+            geom_vector b = {vertex_0.x - vertex_1.x,
+                             vertex_0.y - vertex_1.y,
+                             vertex_0.z - vertex_1.z};
+            geom_vector triangle_normal = cross_product(a, b);
+            unit_vector(triangle_normal);
+            std::cout << std::setprecision(4) << std::fixed;
+            if (triangle_normal.z < 0.0){
+                std::cout << "Warning: z-component of triangle normal is smaller than 0.0!" << std::endl; // temporary
+            }
 
-    //     delete[] horizon_cell;
+            // Define area factor
+            double area_factor;
+            if (cons_area_factor){
+                area_factor = 1.0 / dot_product(triangle_normal,
+                                                sphere_normal);
+            } else {
+                area_factor = 1.0;
+            }
 
+            // ----------------------------------------------------------------
+            // Compute SW correction factor (sw_dir_cor)
+            // ----------------------------------------------------------------
+
+            // Initial ray direction
+            geom_vector sun_dir_xyp; // sun direction in the x-y plane
+            sun_dir_xyp.x = north_direction.x;
+            sun_dir_xyp.y = north_direction.y;
+            sun_dir_xyp.z = north_direction.z;
+
+            // Loop through azimuth angles
+            for (int k = 0; k < azim_num; k++){
+
+                // Rotation axis
+                geom_vector rot_axis = cross_product(sun_dir_xyp,
+                                                     sphere_normal);
+                // cross product of 2 perpendicular unit vectors -> unit vector
+
+                // Iteratively increase elevation angle and compute sw_dir_cor
+                geom_vector sun_dir = sun_dir_xyp;
+                double elev_ang = 0.0;  // -> sw_dir_cor = 0.0 for this angle
+                for (int m = 0; m < (elev_num - 1); m++){
+                    elev_ang += elev_spac;
+                    sun_dir = vector_rotation(sun_dir, rot_axis, elev_sin_sun,
+                        elev_cos_sun);
+                    // check for self-shadowing (triangle)
+                    double dot_prod_ts = dot_product(sun_dir, triangle_normal);
+                    if (dot_prod_ts <= 0.0){
+                        continue; // sw_dir_cor += 0.0
+                    }
+                    double dot_prod_hs = dot_product(sun_dir, sphere_normal);
+                    double mask_shadow = double(elev_ang > horizon_cell[k]);
+                    double sw_dir_cor = (1.0 / dot_prod_hs) * area_factor *
+                        mask_shadow * dot_prod_ts;
+                    if (sw_dir_cor < 0.0){
+                        std::cout << "Warning: 'sw_dir_cor' is smaller than 0.0!" << std::endl; // temporary
+                    }
+                    size_t ind_hori = lin_ind_3d(azim_num, elev_num,
+                                                 i, k, m + 1);
+                    f_cor[ind_hori] += std::min(sw_dir_cor, sw_dir_cor_max);
+                }
+
+            // Azimuthal rotation of ray direction (clockwise; first to east)
+            sun_dir_xyp = vector_rotation(sun_dir_xyp, sphere_normal,
+                -azim_sin, azim_cos);  // sin(-x) == -sin(x), cos(x) == cos(-x)
+
+            }
+
+            // ----------------------------------------------------------------
+
+            delete[] horizon_cell;
+
+        }
+
+        // Compute average SW correction factor for parent cell
+        for (int k = 0; k < azim_num; k++){
+            for (int m = 0; m < elev_num; m++){
+                size_t ind_hori = lin_ind_3d(azim_num, elev_num,
+                                             i, k, m);
+                f_cor[ind_hori] /= (float)num_cell_child_per_parent;
+
+            }
         }
 
     }
 
-    // return num_rays;  // parallel
-    // }, std::plus<size_t>());  // parallel
+    return num_rays;  // parallel
+    }, std::plus<size_t>());  // parallel
 
     auto end_ray = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> time_ray = end_ray - start_ray;
@@ -652,12 +688,13 @@ void horizon_svf_comp(double* vlon, double* vlat,
 
     // Print number of rays needed for location and azimuth direction
     std::cout << "Number of rays shot: " << num_rays << std::endl;
-    // double ratio = (double)num_rays / (double)(num_cell * azim_num);
-    // std::cout << std::setprecision(2) << std::fixed;
-    // std::cout << "Average number of rays per cell and azimuth sector: "
-    //     << ratio << std::endl;
+    // double ratio = (double)num_rays / (double)(num_cell * azim_num); // ############# temporary
+    double ratio = (double)num_rays / (double)(5000 * num_cell_child_per_parent * azim_num);
+    std::cout << std::setprecision(2) << std::fixed;
+    std::cout << "Average number of rays per cell and azimuth sector: "
+        << ratio << std::endl;
 
-    // std::cout << "------------------------------------------------------------"
-    //     << "-------------------" << std::endl;
+    std::cout << "------------------------------------------------------------"
+        << "-------------------" << std::endl;
 
 }
