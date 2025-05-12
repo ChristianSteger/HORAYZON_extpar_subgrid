@@ -17,7 +17,11 @@ style.use("classic")
 
 # Paths
 # path_in = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
+# path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
+#     + "ICON_grids_EXTPAR/"
 path_in = "/Users/csteger/Desktop/"
+path_ige = "/Users/csteger/Dropbox/MeteoSwiss/Data/Miscellaneous/" \
+    + "ICON_grids_EXTPAR/"
 
 # Path to Cython/C++ functions
 # sys.path.append("/scratch/mch/csteger/HORAYZON_extpar_subgrid/")
@@ -70,7 +74,8 @@ plt.show()
 num_hori = 24 # number of azimuth angles
 dist_search = 40_000.0 #  horizon search distance [m]
 ray_org_elev = 0.2 # 0.1, 0.2 [m]
-ind_hori_out = np.array([0, 1, 5, 10, 3_000, 21_000, 101_000, 3], dtype=np.int32)
+ind_hori_out = np.array([0, 1, 5, 10, 3_000, 21_000, 101_000, 3],
+                        dtype=np.int32)
 # output horizon for specific locations
 num_elev = 91 # number of elevation angles for sw_dir_cor computation
 sw_dir_cor_max = 25.0 # maximum value for SW_dir correction factor
@@ -87,9 +92,14 @@ f_cor, horizon_out = horizon_svf_comp_py(
     ray_org_elev, num_elev,
     sw_dir_cor_max, cons_area_factor)
 
-# Test plot f_cor
+# -----------------------------------------------------------------------------
+# Simple checks of output
+# -----------------------------------------------------------------------------
+
 azim = np.arange(0.0, 360.0, 360 // num_hori)
 elev = np.linspace(0.0, 90.0, 91)
+
+# Plot f_cor
 ind = 3334
 plt.figure(figsize=(14, 6))
 plt.pcolormesh(azim, elev, f_cor[ind, :, :].transpose(), vmin=0.0, vmax=2.0,
@@ -103,15 +113,33 @@ for i in range(0, num_hori, 2):
         plt.plot(elev, f_cor[ind, i, :])
 plt.show()
 
-# Test plot horizon
+# Plot terrain horizon
 plt.figure()
 for i in range(ind_hori_out.size):
         plt.plot(azim, horizon_out[i, :])
 plt.show()
 
 # -----------------------------------------------------------------------------
-# Temporary stuff to check C++ code...
+# Compare against elevation on parent cells
 # -----------------------------------------------------------------------------
+
+# ICON test (2km)
+icon_res = "2km"
+icon_grid = "test/icon_grid_DOM01.nc"
+
+# Load ICON grid with specific resolution
+ds = xr.open_dataset(path_ige + icon_grid)
+vlon = ds["vlon"].values
+vlat = ds["vlat"].values
+vertex_of_cell = ds["vertex_of_cell"].values - 1  # (3, num_cell; int32)
+ds.close()
+
+# Load elevation data
+ds = xr.open_dataset(path_ige + "elevation_" + icon_res + ".nc")
+
+###############################################################################
+# Temporary stuff to check C++ code...
+###############################################################################
 
 # rad_earth = 6371229.0
 # points_x = (rad_earth + elevation[0]) * np.cos(vlat[0]) * np.cos(vlon[0])
