@@ -18,16 +18,16 @@ from functions import refine_mesh_nc, alpha_minmax, centroid_values
 style.use("classic")
 
 # Paths
-# path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
-#     + "ICON_grids_EXTPAR/"
-# path_dem = "/store_new/mch/msopr/csteger/Data/DEMs/Copernicus_DEM/"
-# path_plot = "/scratch/mch/csteger/HORAYZON_extpar/plots/"
-# path_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
-path_ige = "/Users/csteger/Dropbox/MeteoSwiss/Data/Miscellaneous/" \
+path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
     + "ICON_grids_EXTPAR/"
-path_dem = "/Users/csteger/Dropbox/MeteoSwiss/Data/DEMs/Copernicus_DEM/"
-path_plots = "/Users/csteger/Desktop/"
-path_out = "/Users/csteger/Desktop/"
+path_dem = "/store_new/mch/msopr/csteger/Data/DEMs/Copernicus_DEM/"
+path_plot = "/scratch/mch/csteger/HORAYZON_extpar/plots/"
+path_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
+# path_ige = "/Users/csteger/Dropbox/MeteoSwiss/Data/Miscellaneous/" \
+#     + "ICON_grids_EXTPAR/"
+# path_dem = "/Users/csteger/Dropbox/MeteoSwiss/Data/DEMs/Copernicus_DEM/"
+# path_plots = "/Users/csteger/Desktop/"
+# path_out = "/Users/csteger/Desktop/"
 
 ###############################################################################
 # Load ICON grid data and pre-process
@@ -37,34 +37,37 @@ path_out = "/Users/csteger/Desktop/"
 # Settings
 # -----------------------------------------------------------------------------
 
-# ICON test (2km)
-icon_res = "2km"
-icon_grid = "test/icon_grid_DOM01.nc"
-# n_sel = 73 # mesh refinement level (identical to theoretical value)
-n_sel = 36 #################################################################### temporary for testing
-check_mesh = True # optional (computational intensive) mesh checking steps
-file_out = "ICON_refined_mesh_" + "test_" + icon_res + ".nc"
-
-# # ICON MCH (1km)
-# icon_res = "1km"
-# icon_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc"
-# n_sel = 33 # ('faces_child' < 16 GB)
-# check_mesh = False
-# file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
+# # ICON test (2km)
+# icon_res = "2km"
+# icon_grid = "test/icon_grid_DOM01.nc"
+# # n_sel = 73 # mesh refinement level (identical to theoretical value)
+# n_sel = 36 #################################################################### temporary for testing
+# check_mesh = True # optional (computational intensive) mesh checking steps
+# file_out = "ICON_refined_mesh_" + "test_" + icon_res + ".nc"
 
 # # ICON MCH (2km)
 # icon_res = "2km"
 # icon_grid = "MeteoSwiss/icon_grid_0002_R19B07_mch.nc"
-# n_sel = 66 # ('faces_child' < 16 GB)
+# # n_sel = 66 # ('faces_child' < 16 GB)
+# n_sel = 46 # ~49.2 m resolution
 # check_mesh = False
 # file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
 
-# # ICON MCH (500m)
-# icon_res = "500m"
-# icon_grid = "MeteoSwiss/icon_grid_00005_R19B09_DOM02.nc"
-# n_sel = 18 # (identical to theoretical value)
+# # ICON MCH (1km)
+# icon_res = "1km"
+# icon_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc"
+# # n_sel = 33 # ('faces_child' < 16 GB)
+# n_sel = 23 # ~49.2 m resolution
 # check_mesh = False
 # file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
+
+# ICON MCH (500m)
+icon_res = "500m"
+icon_grid = "MeteoSwiss/icon_grid_00005_R19B09_DOM02.nc"
+# n_sel = 18 # (identical to theoretical value)
+n_sel = 12 # ~47.1 m resolution
+check_mesh = False
+file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
 
 # -----------------------------------------------------------------------------
 

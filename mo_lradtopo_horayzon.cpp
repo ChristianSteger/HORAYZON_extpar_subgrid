@@ -519,17 +519,15 @@ void horizon_svf_comp(double* vlon, double* vlat,
     size_t num_rays = 0;
 
     num_rays += tbb::parallel_reduce(
-    tbb::blocked_range<size_t>(0, 5000), 0.0,
-    [&](tbb::blocked_range<size_t> r, size_t num_rays) {  // parallel (100 should be 'num_cell_parent') temporary!!!
+    tbb::blocked_range<size_t>(0, num_cell_parent), 0.0,
+    [&](tbb::blocked_range<size_t> r, size_t num_rays) {  // parallel
 
     // Loop through parent cells
-    // for (size_t i = 0; i < (size_t)num_cell_parent; i++){ // serial  ########## temporary !!!
-    //for (size_t i = 0; i < 100; i++){ // serial
+    // for (size_t i = 0; i < (size_t)num_cell_parent; i++){ // serial
     for (size_t i=r.begin(); i<r.end(); ++i) {  // parallel
 
         // Loop through child cells
-         for (size_t j = 0; j < (size_t)num_cell_child_per_parent; j++){  // temporary
-        // for (size_t j = 0; j < 1; j++){
+         for (size_t j = 0; j < (size_t)num_cell_child_per_parent; j++){
 
             int ind_cell = i * num_cell_child_per_parent + j;
 
@@ -610,11 +608,8 @@ void horizon_svf_comp(double* vlon, double* vlat,
             geom_vector triangle_normal = cross_product(a, b);
             unit_vector(triangle_normal);
             std::cout << std::setprecision(4) << std::fixed;
-            if (triangle_normal.z < 0.0){
-                std::cout << "Warning: z-component of triangle normal is smaller than 0.0!" << std::endl; // temporary
-            }
 
-            // Define area factor
+            // Compute surface area increase factor
             double area_factor;
             if (cons_area_factor == 1){
                 area_factor = 1.0 / dot_product(triangle_normal,
@@ -657,9 +652,6 @@ void horizon_svf_comp(double* vlon, double* vlat,
                     double mask_shadow = double(elev_ang > horizon_cell[k]);
                     double sw_dir_cor = (1.0 / dot_prod_hs) * area_factor *
                         mask_shadow * dot_prod_ts;
-                    if (sw_dir_cor < 0.0){
-                        std::cout << "Warning: 'sw_dir_cor' is smaller than 0.0!" << std::endl; // temporary
-                    }
                     size_t ind_hori = lin_ind_3d(azim_num, num_elev,
                                                  i, k, m + 1);
                     f_cor[ind_hori] += std::min(sw_dir_cor, sw_dir_cor_max);
@@ -699,8 +691,7 @@ void horizon_svf_comp(double* vlon, double* vlat,
 
     // Print number of rays needed for location and azimuth direction
     std::cout << "Number of rays shot: " << num_rays << std::endl;
-    // double ratio = (double)num_rays / (double)(num_cell * azim_num); // ############# temporary
-    double ratio = (double)num_rays / (double)(5000 * num_cell_child_per_parent * azim_num);
+    double ratio = (double)num_rays / ((double)num_cell * (double)azim_num);
     std::cout << std::setprecision(2) << std::fixed;
     std::cout << "Average number of rays per cell and azimuth sector: "
         << ratio << std::endl;

@@ -60,7 +60,7 @@ def horizon_svf_comp_py(np.ndarray[np.float64_t, ndim = 1] vlon,
     sw_dir_cor_max : double
         Maximum value for individual SW_dir correction factor [-]
     cons_area_factor : int
-        Flag for using surface increase area factor for computing SW_dir
+        Flag for using surface area increase factor for computing SW_dir
         correction factor (0: off, 1: on)
 
     Returns
