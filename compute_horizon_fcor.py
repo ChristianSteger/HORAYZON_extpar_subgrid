@@ -72,6 +72,9 @@ dist_search = 40_000.0 #  horizon search distance [m]
 ray_org_elev = 0.2 # 0.1, 0.2 [m]
 ind_hori_out = np.array([0, 1, 5, 10, 3_000, 21_000, 101_000, 3], dtype=np.int32)
 # output horizon for specific locations
+num_elev = 91 # number of elevation angles for sw_dir_cor computation
+sw_dir_cor_max = 25.0 # maximum value for SW_dir correction factor
+cons_area_factor = 1 # use area factor for SW_dir correction factor
 
 # Compute f_cor
 f_cor, horizon_out = horizon_svf_comp_py(
@@ -81,7 +84,8 @@ f_cor, horizon_out = horizon_svf_comp_py(
     ind_hori_out,
     num_cell_parent, num_cell_child_per_parent,
     num_hori, dist_search,
-    ray_org_elev)
+    ray_org_elev, num_elev,
+    sw_dir_cor_max, cons_area_factor)
 
 # Test plot f_cor
 azim = np.arange(0.0, 360.0, 360 // num_hori)
@@ -95,7 +99,8 @@ plt.colorbar()
 plt.show()
 
 plt.figure()
-plt.plot(elev, f_cor[ind, 16, :])
+for i in range(0, num_hori, 2):
+        plt.plot(elev, f_cor[ind, i, :])
 plt.show()
 
 # Test plot horizon
@@ -130,15 +135,12 @@ plt.show()
 #         ind_cell = i * num_cell_child_per_parent + j
 # print(ind_cell)
 
-elev_num = 91
-elev_spac = np.deg2rad(90.0) / float(elev_num - 1)
-
-elev_ang = 0.0
-for m in range(elev_num -1):
-    elev_ang += elev_spac
-    print(np.rad2deg(elev_ang), m)
-
-
+# num_elev = 91
+# elev_spac = np.deg2rad(90.0) / float(num_elev - 1)
+# elev_ang = 0.0
+# for m in range(num_elev -1):
+#     elev_ang += elev_spac
+#     print(np.rad2deg(elev_ang), m)
 
 # -----------------------------------------------------------------------------
 

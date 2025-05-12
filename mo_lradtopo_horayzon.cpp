@@ -422,7 +422,8 @@ void horizon_svf_comp(double* vlon, double* vlat,
     int num_vertex, int num_cell, int num_hori_out,
     int num_cell_parent, int num_cell_child_per_parent,
     int azim_num, double dist_search_dp,
-    double ray_org_elev){
+    double ray_org_elev, int num_elev,
+    double sw_dir_cor_max, int cons_area_factor){
 
     // Fixed settings
     double hori_acc = deg2rad(0.25); // horizon accuracy [rad]
@@ -430,9 +431,6 @@ void horizon_svf_comp(double* vlon, double* vlat,
     // threshold for sampling in negative elevation angle direction [rad]
     // - relevant for 'void sampling directions' at edge of mesh
     // - necessary requirement: (elev_ang_thresh - (2.0 * hori_acc)) > -90.0  # probably obsolete when ray casting at triangle centroids...
-    int elev_num = 91; // number of elevation angles for sw_dir_cor computation
-    double sw_dir_cor_max = 25.0; // maximum value for sw_dir_cor [-]
-    bool cons_area_factor = true; // use area factor for sw_dir_cor
 
     // Constants
     double rad_earth = 6371229.0;  // ICON/COSMO earth radius [m]
@@ -446,6 +444,19 @@ void horizon_svf_comp(double* vlon, double* vlat,
         << std::endl;
     std::cout << "------------------------------------------------------------"
         << "-------------------" << std::endl;
+
+    // Settings ############################################################### temporary
+    std::cout << "Search distance: " << dist_search << " m" << std::endl;
+    std::cout << "Ray origin elevation: " << ray_org_elev << " m" << std::endl;
+    std::cout << "Number of elevation angles: " << num_elev << std::endl;
+    std::cout << "SW correction factor max: " << sw_dir_cor_max << std::endl;
+    std::cout << "Consider surface area factor: " << cons_area_factor
+        << std::endl;
+    std::cout << "Horizon accuracy: " << rad2deg(hori_acc) << " deg"
+        << std::endl;
+    std::cout << "Elevation angle threshold: " << rad2deg(elev_ang_thresh)
+        << " deg" << std::endl;
+    // ######################################################################## temporary
 
     // In-place transformation from geographic to ECEF coordinates
     std::vector<geom_point> vertices(num_vertex);
@@ -500,7 +511,7 @@ void horizon_svf_comp(double* vlon, double* vlat,
     double elev_sin_2ha = sin(2.0 * hori_acc);
     double elev_cos_2ha = cos(2.0 * hori_acc);
     // Note: sin(-x) == -sin(x), cos(x) == cos(-x)
-    double elev_spac = deg2rad(90.0) / (double)(elev_num - 1);
+    double elev_spac = deg2rad(90.0) / (double)(num_elev - 1);
     double elev_sin_sun = sin(elev_spac);
     double elev_cos_sun = cos(elev_spac);
 
@@ -605,7 +616,7 @@ void horizon_svf_comp(double* vlon, double* vlat,
 
             // Define area factor
             double area_factor;
-            if (cons_area_factor){
+            if (cons_area_factor == 1){
                 area_factor = 1.0 / dot_product(triangle_normal,
                                                 sphere_normal);
             } else {
@@ -633,7 +644,7 @@ void horizon_svf_comp(double* vlon, double* vlat,
                 // Iteratively increase elevation angle and compute sw_dir_cor
                 geom_vector sun_dir = sun_dir_xyp;
                 double elev_ang = 0.0;  // -> sw_dir_cor = 0.0 for this angle
-                for (int m = 0; m < (elev_num - 1); m++){
+                for (int m = 0; m < (num_elev - 1); m++){
                     elev_ang += elev_spac;
                     sun_dir = vector_rotation(sun_dir, rot_axis, elev_sin_sun,
                         elev_cos_sun);
@@ -649,7 +660,7 @@ void horizon_svf_comp(double* vlon, double* vlat,
                     if (sw_dir_cor < 0.0){
                         std::cout << "Warning: 'sw_dir_cor' is smaller than 0.0!" << std::endl; // temporary
                     }
-                    size_t ind_hori = lin_ind_3d(azim_num, elev_num,
+                    size_t ind_hori = lin_ind_3d(azim_num, num_elev,
                                                  i, k, m + 1);
                     f_cor[ind_hori] += std::min(sw_dir_cor, sw_dir_cor_max);
                 }
@@ -668,8 +679,8 @@ void horizon_svf_comp(double* vlon, double* vlat,
 
         // Compute average SW correction factor for parent cell
         for (int k = 0; k < azim_num; k++){
-            for (int m = 0; m < elev_num; m++){
-                size_t ind_hori = lin_ind_3d(azim_num, elev_num,
+            for (int m = 0; m < num_elev; m++){
+                size_t ind_hori = lin_ind_3d(azim_num, num_elev,
                                              i, k, m);
                 f_cor[ind_hori] /= (float)num_cell_child_per_parent;
 
