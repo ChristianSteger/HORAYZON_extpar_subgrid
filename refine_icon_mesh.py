@@ -40,8 +40,8 @@ path_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
 # # ICON test (2km)
 # icon_res = "2km"
 # icon_grid = "test/icon_grid_DOM01.nc"
-# n_sel = 73 # mesh refinement level (identical to theoretical value)
-# # n_sel = 36 # temporary for testing
+# # n_sel = 73 # mesh refinement level (identical to theoretical value)
+# n_sel = 36 # temporary for testing
 # check_mesh = True # optional (computational intensive) mesh checking steps
 # file_out = "ICON_refined_mesh_" + "test_" + icon_res + ".nc"
 
@@ -132,6 +132,13 @@ vertices_child, faces_child = refine_mesh_nc(vertices, vertex_of_cell,
                                              n_sel)
 t_end = perf_counter()
 print(f"ICON mesh refinement: {t_end - t_beg:.1f} s")
+
+# Check size of vertices array
+size_float32 = vertices_child.nbytes / (2.0 * 1e9) # [GB]
+print(f"Size of 'vertices_child' array: {size_float32:.2f} "
+      + f"GB (32-bit float)")
+if size_float32 > 16.0:
+    raise ValueError("Array 'vertices_child' is larger than 16 GB")
 
 # Check that vertices are correctly connected into triangles
 if ((faces_child.min() != 0)
