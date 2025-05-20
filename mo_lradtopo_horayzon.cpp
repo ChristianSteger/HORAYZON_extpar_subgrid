@@ -134,7 +134,7 @@ inline geom_vector vector_rotation(geom_vector v, geom_vector k,
  * @param array_len Length of array.
  * @return Index of element in array.
  */
-int element_in_array(int element, int* array, int array_len){
+int element_in_array(unsigned int element, unsigned int* array, int array_len){
     for (int i = 0; i < array_len; i++){
         if (array[i] == element){
             return i;
@@ -247,7 +247,7 @@ RTCDevice initializeDevice() {
  * @param vertices Vertices of the triangles [m].
  * @return Embree scene.
  */
-RTCScene initializeScene(RTCDevice device, int* vertex_of_triangle,
+RTCScene initializeScene(RTCDevice device, unsigned int* vertex_of_triangle,
     int num_triangle, std::vector<geom_point>& vertices){
 
     RTCScene scene = rtcNewScene(device);
@@ -415,11 +415,12 @@ void terrain_horizon(float ray_org_x, float ray_org_y, float ray_org_z,
 
 void horizon_svf_comp(double* vlon, double* vlat,
     double* elevation,
-    int* faces,
-    int* ind_hori_out,
+    unsigned int* faces,
+    unsigned int* ind_hori_out,
     float* f_cor,
     double* horizon_out,
-    int num_vertex, int num_cell, int num_hori_out,
+    int num_vertex, int num_cell,
+    int num_hori_out,
     int num_cell_parent, int num_cell_child_per_parent,
     int azim_num, double dist_search_dp,
     double ray_org_elev, int num_elev,
@@ -529,7 +530,7 @@ void horizon_svf_comp(double* vlon, double* vlat,
         // Loop through child cells
          for (size_t j = 0; j < (size_t)num_cell_child_per_parent; j++){
 
-            int ind_cell = i * num_cell_child_per_parent + j;
+            unsigned int ind_cell = i * (size_t)num_cell_child_per_parent + j;
 
             // Compute cell (triangle) centroid
             geom_point vertex_0 = {vertices[faces[(ind_cell * 3) + 0]].x,

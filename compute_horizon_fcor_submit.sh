@@ -3,7 +3,7 @@
 #SBATCH --job-name="comp_fcor"
 #SBATCH --nodes=1
 #SBATCH --output="job.out"
-#SBATCH --time=00:17:00
+#SBATCH --time=00:37:00
 #SBATCH --partition=postproc
 #SBATCH --cpus-per-task=64
 #SBATCH --exclusive
