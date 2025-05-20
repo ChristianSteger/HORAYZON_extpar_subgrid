@@ -40,32 +40,31 @@ path_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
 # # ICON test (2km)
 # icon_res = "2km"
 # icon_grid = "test/icon_grid_DOM01.nc"
-# # n_sel = 73 # mesh refinement level (identical to theoretical value)
-# n_sel = 36 #################################################################### temporary for testing
+# n_sel = 73 # mesh refinement level (identical to theoretical value)
+# # n_sel = 36 # temporary for testing
 # check_mesh = True # optional (computational intensive) mesh checking steps
 # file_out = "ICON_refined_mesh_" + "test_" + icon_res + ".nc"
 
 # # ICON MCH (2km)
 # icon_res = "2km"
 # icon_grid = "MeteoSwiss/icon_grid_0002_R19B07_mch.nc"
+# n_sel = 73 # (identical to theoretical value)
 # # n_sel = 66 # ('faces_child' < 16 GB)
-# n_sel = 46 # ~49.2 m resolution
 # check_mesh = False
 # file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
 
 # # ICON MCH (1km)
 # icon_res = "1km"
 # icon_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc"
+# n_sel = 37 # (identical to theoretical value)
 # # n_sel = 33 # ('faces_child' < 16 GB)
-# n_sel = 23 # ~49.2 m resolution
 # check_mesh = False
 # file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
 
 # ICON MCH (500m)
 icon_res = "500m"
 icon_grid = "MeteoSwiss/icon_grid_00005_R19B09_DOM02.nc"
-# n_sel = 18 # (identical to theoretical value)
-n_sel = 12 # ~47.1 m resolution
+n_sel = 18 # (identical to theoretical value)
 check_mesh = False
 file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
 
@@ -109,22 +108,20 @@ n_theo = math.sqrt(cell_area_icon / cell_area_dem)
 n_theo = round(n_theo) # closest to DEM resolution
 # n_theo = math.ceil(n_theo) # first higher resolution than DEM
 print(f"Division steps (n): {n_theo}")
-res_icon_ref = math.sqrt(cell_area_icon / (n_theo ** 2))
-print(f"ICON resolution: {res_icon_ref:.1f} m")
-num_tri_ref = vertex_of_cell.shape[1] * (n_theo ** 2)
-print(f"Number of resulting triangles: {num_tri_ref:,}".replace(",", "'"))
-print(f"Size of 'faces_child' array: {(12 * num_tri_ref / 1e9):.2f} GB")
+res_icon_fine = math.sqrt(cell_area_icon / (n_theo ** 2))
+print(f"ICON resolution: {res_icon_fine:.1f} m")
+num_tri_fine = vertex_of_cell.shape[1] * (n_theo ** 2)
+print(f"Number of resulting triangles: {num_tri_fine:,}".replace(",", "'"))
+print(f"Size of 'faces_child' array: {(12 * num_tri_fine / 1e9):.2f} GB")
 
 # Select refinement level
 print(" Selected refinement level ".center(60, "-"))
 print(f"Division steps (n): {n_sel}")
-res_icon_ref = math.sqrt(cell_area_icon / (n_sel ** 2))
-print(f"ICON resolution: {res_icon_ref:.1f} m")
-num_tri_ref = vertex_of_cell.shape[1] * (n_sel ** 2)
-print(f"Number of resulting triangles: {num_tri_ref:,}".replace(",", "'"))
-print(f"Size of 'faces_child' array: {(12 * num_tri_ref / 1e9):.2f} GB")
-if (12 * num_tri_ref / 1e9) > 16.0:
-    raise ValueError("Array 'faces_child' is too large (> 16 GB)")
+res_icon_fine = math.sqrt(cell_area_icon / (n_sel ** 2))
+print(f"ICON resolution: {res_icon_fine:.1f} m")
+num_tri_fine = vertex_of_cell.shape[1] * (n_sel ** 2)
+print(f"Number of resulting triangles: {num_tri_fine:,}".replace(",", "'"))
+print(f"Size of 'faces_child' array: {(12 * num_tri_fine / 1e9):.2f} GB")
 print("-" * 60)
 
 # Refine ICON triangle mesh
@@ -277,7 +274,7 @@ nc_data.units = "m"
 nc_data.long_name = "elevation of vertices"
 nc_data[:] = velev_child
 # -----------------------------------------------------------------------------
-nc_data = ncfile.createVariable(varname="faces", datatype="i4",
+nc_data = ncfile.createVariable(varname="faces", datatype="u4",
                                 dimensions=("num_cell_child", "tri_vertex"))
 nc_data.long_name = "transposed vertex_of_cell"
 nc_data[:] = faces_child

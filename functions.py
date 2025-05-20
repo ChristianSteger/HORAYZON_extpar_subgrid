@@ -24,6 +24,16 @@ def refine_mesh_4c_trimesh(mesh, level=1):
     """
     Iteratively subdivides a triangle mesh on a unit sphere into four child 
     triangles.
+
+    Parameters:
+    mesh : trimesh.base.Trimesh
+        Input mesh
+    level : int
+        Subdivision level
+
+    Returns:
+    mesh : trimesh.base.Trimesh
+        Refined mesh
     """
     for _ in range(level):
         mesh = mesh.subdivide()
@@ -47,18 +57,19 @@ def refine_mesh_4c_py(vertices, faces):
         Indices of triangle faces
     
     Returns:
-    vertices_ref : array of float (num_vertex_ref, 3)
+    vertices_child : array of float (num_vertex_child, 3)
         Cartesian coordinates (x, y, z) of refined vertices [-]
-    faces_ref : array of int (num_faces_ref, 3)
+    faces_child : array of int (num_faces_child, 3)
         Indices of refined triangle faces
     """
     num_vert = vertices.shape[0]
     num_faces = faces.shape[0]
-    vertices_ref = np.empty((num_vert + num_faces * 3, 3),
+    vertices_child = np.empty((num_vert + num_faces * 3, 3),
                             dtype=vertices.dtype)
     # allocate maximal possible size
-    vertices_ref[:num_vert, :] = vertices
-    faces_ref = np.empty((num_faces * 4, 3), dtype=faces.dtype)    
+    vertices_child[:num_vert, :] = vertices
+    dtype_out = np.dtype(f"uint{faces.itemsize * 8}")
+    faces_child = np.empty((num_faces * 4, 3), dtype=dtype_out)
     # allocate exact size
     midpoint_cache = {}  # Cache for midpoints (to only compute them once)
     ind_mp = [0, 0, 0]
@@ -74,31 +85,31 @@ def refine_mesh_4c_py(vertices, faces):
             if key in midpoint_cache:
                 ind_mp[k] = midpoint_cache[key]
             else:
-                midpoint = (vertices_ref[i, :] + vertices_ref[j, :]) / 2.0
+                midpoint = (vertices_child[i, :] + vertices_child[j, :]) / 2.0
                 midpoint /= np.sqrt((midpoint ** 2).sum())
-                vertices_ref[num_vert, :] = midpoint
+                vertices_child[num_vert, :] = midpoint
                 midpoint_cache[key] = num_vert
                 ind_mp[k] = num_vert
                 num_vert += 1
 
         # Add four child triangles (counter-clockwise orientated)
         ind_0, ind_1, ind_2 = faces[ind_faces, :]
-        faces_ref[ind, :] = [ind_0, ind_mp[0], ind_mp[2]]
+        faces_child[ind, :] = [ind_0, ind_mp[0], ind_mp[2]]
         ind += 1
-        faces_ref[ind, :] = [ind_1, ind_mp[1], ind_mp[0]]
+        faces_child[ind, :] = [ind_1, ind_mp[1], ind_mp[0]]
         ind += 1
-        faces_ref[ind, :] = [ind_2, ind_mp[2], ind_mp[1]]
+        faces_child[ind, :] = [ind_2, ind_mp[2], ind_mp[1]]
         ind += 1
-        faces_ref[ind, :] = [ind_mp[0], ind_mp[1], ind_mp[2]]
+        faces_child[ind, :] = [ind_mp[0], ind_mp[1], ind_mp[2]]
         ind += 1
 
-    return vertices_ref[:num_vert, :], faces_ref
+    return vertices_child[:num_vert, :], faces_child
 
 # -----------------------------------------------------------------------------
 # Own Numba implementation
 # -----------------------------------------------------------------------------
 
-@njit
+@njit("(float64[:, :], uint32[:, :])")
 def refine_mesh_4c_nb(vertices, faces):
     """
     Refines a triangle mesh on a sphere surface by subdividing each parent 
@@ -111,18 +122,18 @@ def refine_mesh_4c_nb(vertices, faces):
         Indices of triangle faces
     
     Returns:
-    vertices_ref : array of float (num_vertex_ref, 3)
+    vertices_child : array of float (num_vertex_child, 3)
         Cartesian coordinates (x, y, z) of refined vertices [-]
-    faces_ref : array of int (num_faces_ref, 3)
+    faces_child : array of int (num_faces_child, 3)
         Indices of refined triangle faces
     """
     num_vert = vertices.shape[0]
     num_faces = faces.shape[0]
-    vertices_ref = np.empty((num_vert + num_faces * 3, 3),
+    vertices_child = np.empty((num_vert + num_faces * 3, 3),
                             dtype=vertices.dtype)
     # allocate maximal possible size
-    vertices_ref[:num_vert, :] = vertices
-    faces_ref = np.empty((num_faces * 4, 3), dtype=faces.dtype)    
+    vertices_child[:num_vert, :] = vertices
+    faces_child = np.empty((num_faces * 4, 3), dtype=np.uint32)
     # allocate exact size
     midpoint_cache = Dict.empty(
         key_type=int64,
@@ -141,25 +152,25 @@ def refine_mesh_4c_nb(vertices, faces):
             if key in midpoint_cache:
                 ind_mp[k] = midpoint_cache[key]
             else:
-                midpoint = (vertices_ref[i, :] + vertices_ref[j, :]) / 2.0
+                midpoint = (vertices_child[i, :] + vertices_child[j, :]) / 2.0
                 midpoint /= np.sqrt((midpoint ** 2).sum())
-                vertices_ref[num_vert, :] = midpoint
+                vertices_child[num_vert, :] = midpoint
                 midpoint_cache[key] = num_vert
                 ind_mp[k] = num_vert
                 num_vert += 1
 
         # Add four child triangles (counter-clockwise orientated)
         ind_0, ind_1, ind_2 = faces[ind_faces, :]
-        faces_ref[ind, :] = [ind_0, ind_mp[0], ind_mp[2]]
+        faces_child[ind, :] = [ind_0, ind_mp[0], ind_mp[2]]
         ind += 1
-        faces_ref[ind, :] = [ind_1, ind_mp[1], ind_mp[0]]
+        faces_child[ind, :] = [ind_1, ind_mp[1], ind_mp[0]]
         ind += 1
-        faces_ref[ind, :] = [ind_2, ind_mp[2], ind_mp[1]]
+        faces_child[ind, :] = [ind_2, ind_mp[2], ind_mp[1]]
         ind += 1
-        faces_ref[ind, :] = [ind_mp[0], ind_mp[1], ind_mp[2]]
+        faces_child[ind, :] = [ind_mp[0], ind_mp[1], ind_mp[2]]
         ind += 1
 
-    return vertices_ref[:num_vert, :], faces_ref
+    return vertices_child[:num_vert, :], faces_child
 
 ###############################################################################
 # Refines a triangle mesh on a sphere surface by subdividing each parent
@@ -170,7 +181,7 @@ def refine_mesh_4c_nb(vertices, faces):
 # Python/Numba implementation
 # -----------------------------------------------------------------------------
 
-@njit
+@njit("(float64[:, :], int32[:, :], int32[:, :], int32[:, :], int32)")
 def refine_mesh_nc(vertices, vertex_of_cell, edge_of_cell, edge_vertices, n):
     """
     Refines a triangle mesh on a sphere surface by subdividing each parent
@@ -189,9 +200,9 @@ def refine_mesh_nc(vertices, vertex_of_cell, edge_of_cell, edge_vertices, n):
         Triangle division number
 
     Returns:
-    vertices_child : array of float (num_vertex_ref, 3)
+    vertices_child : array of float (num_vertex_child, 3)
         Cartesian coordinates (x, y, z) of refined vertices [-]
-    faces_child : array of int (num_faces_ref, 3)
+    faces_child : array of int (num_faces_child, 3)
         Indices of refined triangle faces
     """
 
@@ -202,17 +213,18 @@ def refine_mesh_nc(vertices, vertex_of_cell, edge_of_cell, edge_vertices, n):
     for i in range(n - 1):
         num_vertex_interior_pgc += i
     num_vertex_interior = vertex_of_cell.shape[1] * num_vertex_interior_pgc
-    num_vertex_ref = num_vertex_in + num_vertex_edge + num_vertex_interior
+    num_vertex_child = num_vertex_in + num_vertex_edge + num_vertex_interior
 
     # Mapping of triangle vertex indices
     num_vert_per_tri = 3 + 3 * (n - 1) + num_vertex_interior_pgc
     # print(f"Number of vertices per triangle: {num_vert_per_tri}")
-    mapping = np.empty(num_vert_per_tri, dtype=np.int32)
+    mapping = np.empty(num_vert_per_tri, dtype=np.uint32)
     ind = 0
     mapping[ind] = 0
     ind += 1
     mapping[ind:(ind + (n - 1))] \
-        = np.arange(3 + 2 * (n - 1), 3 + 2 * (n - 1) + (n - 1), dtype=np.int32)
+        = np.arange(3 + 2 * (n - 1), 3 + 2 * (n - 1) + (n - 1),
+                    dtype=np.uint32)
     ind += (n - 1)
     mapping[ind] = 2
     ind += 1
@@ -221,7 +233,7 @@ def refine_mesh_nc(vertices, vertex_of_cell, edge_of_cell, edge_vertices, n):
         mapping[ind] = 3 + i
         ind += 1
         mapping[ind:(ind + n - 2 - i)] \
-            = np.arange(start, start + n - 2 - i, dtype=np.int32)
+            = np.arange(start, start + n - 2 - i, dtype=np.uint32)
         start = start + n - 2 - i
         ind += (n - 2 - i)
         mapping[ind] = 3 + (n - 1) + i
@@ -233,14 +245,14 @@ def refine_mesh_nc(vertices, vertex_of_cell, edge_of_cell, edge_vertices, n):
         raise ValueError("Error while computing the remapping array")
 
     # Compute faces
-    index_2d = np.empty((n + 1, n + 1), dtype=np.int32)
+    index_2d = np.empty((n + 1, n + 1), dtype=np.uint32)
     index_2d.fill(-999)
     ind_vertex = 0
     for i in range(n + 1):
         for j in range(n + 1 - i):
             index_2d[i, j] = ind_vertex
             ind_vertex += 1
-    faces = np.empty((n ** 2, 3), dtype=np.int32)
+    faces = np.empty((n ** 2, 3), dtype=np.uint32)
     ind_face = 0
     for i in range(n):
         for j in range(n - i):
@@ -255,10 +267,10 @@ def refine_mesh_nc(vertices, vertex_of_cell, edge_of_cell, edge_vertices, n):
                 ind_face += 1
 
     # Allocate arrays for refined mesh
-    vertices_child = np.empty((num_vertex_ref, 3), dtype=np.float64)
+    vertices_child = np.empty((num_vertex_child, 3), dtype=np.float64)
     vertices_child.fill(np.nan) # temporary
     faces_child = np.empty((n ** 2 * vertex_of_cell.shape[1], 3),
-                           dtype=np.int32)
+                           dtype=np.uint32)
 
     # Add vertices from base mesh
     vertices_child[:num_vertex_in, :] = vertices
@@ -290,7 +302,7 @@ def refine_mesh_nc(vertices, vertex_of_cell, edge_of_cell, edge_vertices, n):
     # unit vectors
 
     # Connect vertices into child triangle
-    indices = np.empty(num_vert_per_tri, dtype=np.int32)
+    indices = np.empty(num_vert_per_tri, dtype=np.uint32)
     ind_face = 0
     for ind_cell in range(vertex_of_cell.shape[1]):
     # for ind_cell in range(500):

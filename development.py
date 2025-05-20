@@ -20,12 +20,12 @@ from functions import refine_mesh_4c_py, refine_mesh_4c_nb
 style.use("classic")
 
 # Paths
-# path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
-#     + "ICON_grids_EXTPAR/"
-# path_plot = "/scratch/mch/csteger/HORAYZON_extpar/plots/"
-path_ige = "/Users/csteger/Dropbox/MeteoSwiss/Data/Miscellaneous/" \
+path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
     + "ICON_grids_EXTPAR/"
-path_plots = "/Users/csteger/Desktop/"
+path_plot = "/scratch/mch/csteger/HORAYZON_extpar/plots/"
+# path_ige = "/Users/csteger/Dropbox/MeteoSwiss/Data/Miscellaneous/" \
+#     + "ICON_grids_EXTPAR/"
+# path_plots = "/Users/csteger/Desktop/"
 
 ###############################################################################
 # Load ICON grid data
@@ -97,10 +97,10 @@ k = math.log(cell_area_icon / cell_area_dem) / (2.0 * math.log(2.0))
 k = round(k) # closest to DEM resolution
 # k = math.ceil(k) # first higher resolution than DEM
 print(f"Bisection steps (k): {k}")
-res_icon_ref = math.sqrt(cell_area_icon / (4 ** k))
-print(f"ICON resolution: {res_icon_ref:.1f} m")
-num_tri_ref = vertex_of_cell.shape[1] * (4 ** k)
-print(f"Number of resulting triangles: {num_tri_ref:,}".replace(",", "'"))
+res_icon_fine = math.sqrt(cell_area_icon / (4 ** k))
+print(f"ICON resolution: {res_icon_fine:.1f} m")
+num_tri_fine = vertex_of_cell.shape[1] * (4 ** k)
+print(f"Number of resulting triangles: {num_tri_fine:,}".replace(",", "'"))
 
 # -----------------------------------------------------------------------------
 # Trimesh
@@ -110,10 +110,10 @@ print(f"Number of resulting triangles: {num_tri_ref:,}".replace(",", "'"))
 faces = np.ascontiguousarray(vertex_of_cell.T)
 mesh = trimesh.Trimesh(vertices=vector_v, faces=faces)
 t_beg = perf_counter()
-mesh_ref = refine_mesh_4c_trimesh(mesh, level=2)
+mesh_fine = refine_mesh_4c_trimesh(mesh, level=2)
 t_end = perf_counter()
 print(f"Elapsed time: {t_end - t_beg:.2f} s")
-print(mesh_ref.vertices.shape, mesh_ref.faces.shape)
+print(mesh_fine.vertices.shape, mesh_fine.faces.shape) # (float64, int64)
 
 # Plot
 num_tri_show = 25_000  # 25_000, None
@@ -122,11 +122,12 @@ ax = plt.axes(projection=ccrs.PlateCarree())
 triangles = tri.Triangulation(np.rad2deg(vlon), np.rad2deg(vlat),
                                   vertex_of_cell.transpose())
 plt.triplot(triangles, color="black", lw=1.0)
-vlon_ref = np.arctan2(mesh_ref.vertices[:, 1], mesh_ref.vertices[:, 0])
-vlat_ref = np.arcsin(mesh_ref.vertices[:, 2])
-triangles_ref = tri.Triangulation(np.rad2deg(vlon_ref), np.rad2deg(vlat_ref),
-                                  mesh_ref.faces[:num_tri_show, :])
-plt.triplot(triangles_ref, color="red", lw=0.5)
+vlon_fine = np.arctan2(mesh_fine.vertices[:, 1], mesh_fine.vertices[:, 0])
+vlat_fine = np.arcsin(mesh_fine.vertices[:, 2])
+triangles_fine = tri.Triangulation(np.rad2deg(vlon_fine),
+                                   np.rad2deg(vlat_fine),
+                                   mesh_fine.faces[:num_tri_show, :])
+plt.triplot(triangles_fine, color="red", lw=0.5)
 ax.add_feature(feature.BORDERS.with_scale("10m"), # type: ignore
             linestyle="-", linewidth=0.6)
 ax.add_feature(feature.COASTLINE.with_scale("10m"), # type: ignore
@@ -147,9 +148,9 @@ faces = np.ascontiguousarray(vertex_of_cell.T)
 t_beg = perf_counter()
 for _ in range(2):
     # vertices, faces = refine_mesh_4c_py(vertices, faces)
-    vertices, faces = refine_mesh_4c_nb(vertices, faces)
-vlon_ref = np.arctan2(vertices[:, 1], vertices[:, 0])
-vlat_ref = np.arcsin(vertices[:, 2])
+    vertices, faces = refine_mesh_4c_nb(vertices, faces.astype(np.uint32))
+vlon_fine = np.arctan2(vertices[:, 1], vertices[:, 0])
+vlat_fine = np.arcsin(vertices[:, 2])
 t_end = perf_counter()
 print(f"Elapsed time: {t_end - t_beg:.2f} s")
 print(vertices.shape, faces.shape)
@@ -161,9 +162,10 @@ ax = plt.axes(projection=ccrs.PlateCarree())
 triangles = tri.Triangulation(np.rad2deg(vlon), np.rad2deg(vlat),
                                   vertex_of_cell.transpose())
 plt.triplot(triangles, color="black", lw=1.0)
-triangles_ref = tri.Triangulation(np.rad2deg(vlon_ref), np.rad2deg(vlat_ref),
-                                  faces[:num_tri_show, :])
-plt.triplot(triangles_ref, color="red", lw=0.5)
+triangles_fine = tri.Triangulation(np.rad2deg(vlon_fine),
+                                   np.rad2deg(vlat_fine),
+                                   faces[:num_tri_show, :])
+plt.triplot(triangles_fine, color="red", lw=0.5)
 ax.add_feature(feature.BORDERS.with_scale("10m"), # type: ignore
             linestyle="-", linewidth=0.6)
 ax.add_feature(feature.COASTLINE.with_scale("10m"), # type: ignore
@@ -184,10 +186,10 @@ n = math.sqrt(cell_area_icon / cell_area_dem)
 n = round(n) # closest to DEM resolution
 # n = math.ceil(n) # first higher resolution than DEM
 print(f"Division steps (n): {n}")
-res_icon_ref = math.sqrt(cell_area_icon / (n ** 2))
-print(f"ICON resolution: {res_icon_ref:.1f} m")
-num_tri_ref = vertex_of_cell.shape[1] * (n ** 2)
-print(f"Number of resulting triangles: {num_tri_ref:,}".replace(",", "'"))
+res_icon_fine = math.sqrt(cell_area_icon / (n ** 2))
+print(f"ICON resolution: {res_icon_fine:.1f} m")
+num_tri_fine = vertex_of_cell.shape[1] * (n ** 2)
+print(f"Number of resulting triangles: {num_tri_fine:,}".replace(",", "'"))
 
 # -----------------------------------------------------------------------------
 # Check approximation of spherical triangle by planar triangle
@@ -336,7 +338,7 @@ num_vertex_interior_pgc = 0  # number of interior vertices per grid cell
 for i in range(n - 1):
     num_vertex_interior_pgc += i
 num_vertex_interior = vertex_of_cell.shape[1] * num_vertex_interior_pgc
-num_vertex_ref = num_vertex_in + num_vertex_edge + num_vertex_interior
+num_vertex_fine = num_vertex_in + num_vertex_edge + num_vertex_interior
 
 # Mapping of triangle vertex indices
 num_vert_per_tri = 3 + 3 * (n - 1) + num_vertex_interior_pgc
@@ -388,7 +390,7 @@ for i in range(n):
             ind_face += 1
 
 # Allocate arrays for refined mesh
-vertices_child = np.empty((num_vertex_ref, 3), dtype=np.float64)
+vertices_child = np.empty((num_vertex_fine, 3), dtype=np.float64)
 vertices_child.fill(np.nan) # temporary
 faces_child = np.empty((n ** 2 * vertex_of_cell.shape[1], 3), dtype=np.int32)
 
