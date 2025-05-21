@@ -525,6 +525,14 @@ void horizon_svf_comp(double* vlon, double* vlat,
 
             unsigned int ind_cell = i * (size_t)num_cell_child_per_parent + j;
 
+            // // ------------------------------------------------------ temporary
+            // // setting to accelerate computation for 'ind_hori_out'
+            // int index = element_in_array(ind_cell, ind_hori_out, num_hori_out);
+            // if (index == -1){
+            //     continue;
+            // }
+            // // ------------------------------------------------------ temporary
+
             // Compute cell (triangle) centroid
             geom_point vertex_0 = {vertices[faces[(ind_cell * 3) + 0]].x,
                                    vertices[faces[(ind_cell * 3) + 0]].y,
@@ -685,7 +693,8 @@ void horizon_svf_comp(double* vlon, double* vlat,
 
     // Print number of rays needed for location and azimuth direction
     std::cout << "Number of rays shot: " << num_rays << std::endl;
-    double ratio = (double)num_rays / ((double)num_cell * (double)azim_num);
+    // double ratio = (double)num_rays / ((double)num_cell * (double)azim_num); // temporary
+    double ratio = (double)num_rays / ((double)num_cell_parent * (double)num_cell_child_per_parent * (double)azim_num);
     std::cout << std::setprecision(2) << std::fixed;
     std::cout << "Average number of rays per cell and azimuth sector: "
         << ratio << std::endl;
