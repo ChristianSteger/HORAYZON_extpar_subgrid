@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <iostream>
 #include <vector>
+#include <unordered_set>
 #include <cmath>
 #include <chrono>
 #include <iomanip>
@@ -134,7 +135,7 @@ inline geom_vector vector_rotation(geom_vector v, geom_vector k,
  * @param array_len Length of array.
  * @return Index of element in array.
  */
-int element_in_array(unsigned int element, unsigned int* array, int array_len){
+int element_index(unsigned int element, unsigned int* array, int array_len){
     for (int i = 0; i < array_len; i++){
         if (array[i] == element){
             return i;
@@ -509,6 +510,10 @@ void horizon_svf_comp(double* vlon, double* vlat,
     double elev_sin_sun = sin(elev_spac);
     double elev_cos_sun = cos(elev_spac);
 
+    // Store 'ind_hori_out' in set for fast membership testing
+    std::unordered_set<unsigned int> ind_hori_out_set(ind_hori_out,
+        ind_hori_out + num_hori_out);
+
     auto start_ray = std::chrono::high_resolution_clock::now();
     size_t num_rays = 0;
 
@@ -525,13 +530,12 @@ void horizon_svf_comp(double* vlon, double* vlat,
 
             unsigned int ind_cell = i * (size_t)num_cell_child_per_parent + j;
 
-            // // ------------------------------------------------------ temporary
-            // // setting to accelerate computation for 'ind_hori_out'
-            // int index = element_in_array(ind_cell, ind_hori_out, num_hori_out);
-            // if (index == -1){
-            //     continue;
-            // }
-            // // ------------------------------------------------------ temporary
+            // ------------------------------------------------------ temporary
+            // setting to accelerate computation for 'ind_hori_out'
+            if (ind_hori_out_set.find(ind_cell) == ind_hori_out_set.end()) {
+                continue;
+            }
+            // ------------------------------------------------------ temporary
 
             // Compute cell (triangle) centroid
             geom_point vertex_0 = {vertices[faces[(ind_cell * 3) + 0]].x,
@@ -592,11 +596,13 @@ void horizon_svf_comp(double* vlon, double* vlat,
                 azim_sin, azim_cos,
                 elev_sin_2ha, elev_cos_2ha);
 
-            // Store horizon for certain cells in output array
-            int index = element_in_array(ind_cell, ind_hori_out, num_hori_out); // inefficient for larger 'ind_hori_out'!
-            if (index != -1){
+            // Store horizon for specified cells in output array
+            if (ind_hori_out_set.find(ind_cell) != ind_hori_out_set.end()) {
+                int index = element_index(ind_cell, ind_hori_out,
+                    num_hori_out);
                 for (int k = 0; k < azim_num; k++){
-                    horizon_out[index * azim_num + k] = rad2deg(horizon_cell[k]);
+                    horizon_out[index * azim_num + k]
+                        = rad2deg(horizon_cell[k]);
                 }
             }
 
