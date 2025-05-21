@@ -265,15 +265,8 @@ RTCScene initializeScene(RTCDevice device, unsigned int* vertex_of_triangle,
     }
 
     // Cell (triangle) indices to vertices
-    Triangle* triangles_embree = (Triangle*) rtcSetNewGeometryBuffer(geom,
-        RTC_BUFFER_TYPE_INDEX, 0, RTC_FORMAT_UINT3, sizeof(Triangle),
-        num_triangle);
-    for (int i = 0; i < num_triangle; i++) {
-        triangles_embree[i].v0 = vertex_of_triangle[(i * 3) + 0];
-        triangles_embree[i].v1 = vertex_of_triangle[(i * 3) + 1];
-        triangles_embree[i].v2 = vertex_of_triangle[(i * 3) + 2];
-    }
-    // -> improvement: pass buffer directly instead of copying
+    rtcSetSharedGeometryBuffer(geom, RTC_BUFFER_TYPE_INDEX, 0,
+    RTC_FORMAT_UINT3, vertex_of_triangle, 0, 3*sizeof(int), num_triangle);
 
     auto start = std::chrono::high_resolution_clock::now();
 
