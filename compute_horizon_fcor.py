@@ -56,7 +56,8 @@ ds = xr.open_dataset(path_in_out + file_mesh)
 vlon = ds["vlon"].values # (num_vertex; float64)
 vlat = ds["vlat"].values # (num_vertex; float64)
 elevation = ds["elevation"].values # (num_vertex; float32)
-faces = ds["faces"].values # (num_cell, 3; int32) (transposed 'vertex_of_cell')
+faces = ds["faces"].values
+# (num_cell, 3; uint32) (transposed 'vertex_of_cell')
 num_cell_parent = int(ds["num_cell_parent"])
 num_cell_child_per_parent = int(ds["num_cell_child_per_parent"])
 ds.close()
@@ -83,6 +84,7 @@ if check_plots:
                   vmax=elevation_centroids[:num_tri_child].max(),
                   edgecolors="black", linewidth=0.1)
     plt.show()
+    del triangles, elevation_centroids
 
 ###############################################################################
 # Compute spatially aggregated correction factors (f_cor)
@@ -91,9 +93,8 @@ if check_plots:
 # Settings 
 num_hori = 24 # number of azimuth angles
 dist_search = 40_000.0 #  horizon search distance [m]
-ray_org_elev = 0.2 # 0.1, 0.2 [m]
-ind_hori_out = np.array([0, 1, 5, 10, 3_000, 21_000, 101_000, 3],
-                        dtype=np.uint32)
+ray_org_elev = 0.5 # 0.1, 0.2 [m]
+ind_hori_out = np.array([0, 1, 5, 10, 3_000, 3], dtype=np.uint32)
 # Indices of 'num_cell_child' to output terrain horizon
 num_elev = 91 # number of elevation angles for sw_dir_cor computation
 sw_dir_cor_max = 25.0 # maximum value for SW_dir correction factor
@@ -114,6 +115,8 @@ locations = {
 # Load data
 path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
     + "ICON_grids_EXTPAR/"
+
+# icon_grid = "MeteoSwiss/icon_grid_0002_R19B07_mch.nc" # 2km
 # icon_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc" # 1km
 icon_grid = "MeteoSwiss/icon_grid_00005_R19B09_DOM02.nc" # 500m
 ds = xr.open_dataset(path_ige + icon_grid)
@@ -136,17 +139,17 @@ for i in locations.keys():
     ind_tri_all[i] = ind_tri
     print(i, ind_tri, clon_parent[ind_tri], clat_parent[ind_tri])
 
-# Test plot of point in triangle
-for i in locations.keys():
-    fig = plt.figure()
-    v0, v1, v2 = vertex_of_cell_parent[:, ind_tri_all[i]]
-    plt.plot(vlon_parent[v0], vlat_parent[v0], "o", color="red")
-    plt.plot(vlon_parent[v1], vlat_parent[v1], "o", color="red")
-    plt.plot(vlon_parent[v2], vlat_parent[v2], "o", color="red")
-    plt.plot(*locations[i], "o", color="blue")
-    plt.savefig("/scratch/mch/csteger/HORAYZON_extpar_subgrid/plots/"
-                + f"point_triangle_{icon_res}_{i}.png", dpi=250)
-    plt.close()
+# # Test plot of point in triangle
+# for i in locations.keys():
+#     fig = plt.figure()
+#     v0, v1, v2 = vertex_of_cell_parent[:, ind_tri_all[i]]
+#     plt.plot(vlon_parent[v0], vlat_parent[v0], "o", color="red")
+#     plt.plot(vlon_parent[v1], vlat_parent[v1], "o", color="red")
+#     plt.plot(vlon_parent[v2], vlat_parent[v2], "o", color="red")
+#     plt.plot(*locations[i], "o", color="blue")
+#     plt.savefig("/scratch/mch/csteger/HORAYZON_extpar_subgrid/plots/"
+#                 + f"point_triangle_{icon_res}_{i}.png", dpi=250)
+#     plt.close()
 
 ind_hori_out = np.array([], dtype=np.uint32)
 for i in locations.keys():
@@ -238,6 +241,26 @@ if check_plots:
     plt.savefig("/scratch/mch/csteger/HORAYZON_extpar_subgrid/ter_horizon.png",
                 dpi=250)
     plt.close()
+
+###############################################################################
+# Temporary - performance scaling with 1 km mesh
+###############################################################################
+
+# # 1km mesh
+# num_cell_parent = np.array([25_000, 50_000, 100_000, 200_000, 500_000, 1_147_980])
+# ray_tracing = np.array([109.66, 321.61, 817.5, 744.40, 2059.60, 2245.14])
+
+# # 2km mesh
+# num_cell_parent = np.array([10_000, 25_000, 50_000, 100_000, 283_876])
+# ray_tracing = np.array([183.44, 602.71, 698.67, 1359.35, 2393.92])
+
+# # Plot
+# plt.figure()
+# plt.plot(num_cell_parent, ray_tracing / num_cell_parent, "-", color="blue", lw=1.5)
+# plt.scatter(num_cell_parent, ray_tracing / num_cell_parent, color="blue", s=30)
+# plt.xlabel("Number of parent cells")
+# plt.ylabel("Ray tracing time / number of parent cells [s]")
+# plt.show()
 
 ###############################################################################
 # Temporary stuff to check C++ code...

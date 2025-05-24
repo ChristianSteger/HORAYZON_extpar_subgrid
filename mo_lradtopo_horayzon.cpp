@@ -528,14 +528,15 @@ void horizon_svf_comp(double* vlon, double* vlat,
         // Loop through child cells
          for (size_t j = 0; j < (size_t)num_cell_child_per_parent; j++){
 
-            unsigned int ind_cell = i * (size_t)num_cell_child_per_parent + j;
+            size_t ind_cell = i * (size_t)num_cell_child_per_parent + j;
+            unsigned int ind_cell_ui32b = (unsigned int)ind_cell;
 
-            // ------------------------------------------------------ temporary
-            // setting to accelerate computation for 'ind_hori_out'
-            if (ind_hori_out_set.find(ind_cell) == ind_hori_out_set.end()) {
-                continue;
-            }
-            // ------------------------------------------------------ temporary
+            // // ------------------------------------------------------ temporary
+            // // setting to accelerate computation for 'ind_hori_out'
+            // if (ind_hori_out_set.find(ind_cell_ui32b) == ind_hori_out_set.end()) {
+            //     continue;
+            // }
+            // // ------------------------------------------------------ temporary
 
             // Compute cell (triangle) centroid
             geom_point vertex_0 = {vertices[faces[(ind_cell * 3) + 0]].x,
@@ -597,8 +598,9 @@ void horizon_svf_comp(double* vlon, double* vlat,
                 elev_sin_2ha, elev_cos_2ha);
 
             // Store horizon for specified cells in output array
-            if (ind_hori_out_set.find(ind_cell) != ind_hori_out_set.end()) {
-                int index = element_index(ind_cell, ind_hori_out,
+            if (ind_hori_out_set.find(ind_cell_ui32b)
+                != ind_hori_out_set.end()) {
+                int index = element_index(ind_cell_ui32b, ind_hori_out,
                     num_hori_out);
                 for (int k = 0; k < azim_num; k++){
                     horizon_out[index * azim_num + k]
@@ -699,8 +701,7 @@ void horizon_svf_comp(double* vlon, double* vlat,
 
     // Print number of rays needed for location and azimuth direction
     std::cout << "Number of rays shot: " << num_rays << std::endl;
-    // double ratio = (double)num_rays / ((double)num_cell * (double)azim_num); // temporary
-    double ratio = (double)num_rays / ((double)num_cell_parent * (double)num_cell_child_per_parent * (double)azim_num);
+    double ratio = (double)num_rays / ((double)num_cell * (double)azim_num);
     std::cout << std::setprecision(2) << std::fixed;
     std::cout << "Average number of rays per cell and azimuth sector: "
         << ratio << std::endl;
