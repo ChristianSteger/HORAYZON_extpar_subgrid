@@ -413,6 +413,7 @@ void horizon_svf_comp(double* vlon, double* vlat,
     unsigned int* ind_hori_out,
     float* f_cor,
     double* horizon_out,
+    double* slope_out,
     int num_vertex, int num_cell,
     int num_hori_out,
     int num_cell_parent, int num_cell_child_per_parent,
@@ -531,12 +532,12 @@ void horizon_svf_comp(double* vlon, double* vlat,
             size_t ind_cell = i * (size_t)num_cell_child_per_parent + j;
             unsigned int ind_cell_ui32b = (unsigned int)ind_cell;
 
-            // // ------------------------------------------------------ temporary
-            // // setting to accelerate computation for 'ind_hori_out'
-            // if (ind_hori_out_set.find(ind_cell_ui32b) == ind_hori_out_set.end()) {
-            //     continue;
-            // }
-            // // ------------------------------------------------------ temporary
+            // ------------------------------------------------------ temporary
+            // setting to accelerate computation for 'ind_hori_out'
+            if (ind_hori_out_set.find(ind_cell_ui32b) == ind_hori_out_set.end()) {
+                continue;
+            }
+            // ------------------------------------------------------ temporary
 
             // Compute cell (triangle) centroid
             geom_point vertex_0 = {vertices[faces[(ind_cell * 3) + 0]].x,
@@ -597,17 +598,6 @@ void horizon_svf_comp(double* vlon, double* vlat,
                 azim_sin, azim_cos,
                 elev_sin_2ha, elev_cos_2ha);
 
-            // Store horizon for specified cells in output array
-            if (ind_hori_out_set.find(ind_cell_ui32b)
-                != ind_hori_out_set.end()) {
-                int index = element_index(ind_cell_ui32b, ind_hori_out,
-                    num_hori_out);
-                for (int k = 0; k < azim_num; k++){
-                    horizon_out[index * azim_num + k]
-                        = rad2deg(horizon_cell[k]);
-                }
-            }
-
             // Compute triangle normal
             geom_vector a = {vertex_2.x - vertex_1.x,
                              vertex_2.y - vertex_1.y,
@@ -617,7 +607,35 @@ void horizon_svf_comp(double* vlon, double* vlat,
                              vertex_0.z - vertex_1.z};
             geom_vector triangle_normal = cross_product(a, b);
             unit_vector(triangle_normal);
-            std::cout << std::setprecision(4) << std::fixed;
+
+            // Store horizon and average slope angle/aspect for specified cells
+            // in output array
+            if (ind_hori_out_set.find(ind_cell_ui32b)
+                != ind_hori_out_set.end()) {
+                int index = element_index(ind_cell_ui32b, ind_hori_out,
+                    num_hori_out);
+                for (int k = 0; k < azim_num; k++){
+                    horizon_out[index * azim_num + k]
+                        = rad2deg(horizon_cell[k]);
+                }
+
+                // Rotate triangle normal from global to local ENU coordinates
+                geom_vector east_direction = cross_product(north_direction,
+                                                           sphere_normal);
+                double x = east_direction.x * triangle_normal.x
+                        +  east_direction.y * triangle_normal.y
+                        +  east_direction.z * triangle_normal.z;
+                double y = north_direction.x * triangle_normal.x
+                        +  north_direction.y * triangle_normal.y
+                        +  north_direction.z * triangle_normal.z;
+                double z = sphere_normal.x * triangle_normal.x
+                        +  sphere_normal.y * triangle_normal.y
+                        +  sphere_normal.z * triangle_normal.z;
+
+                slope_out[index * 3 + 0] = x;
+                slope_out[index * 3 + 1] = y;
+                slope_out[index * 3 + 2] = z;
+            }
 
             // Compute surface area increase factor
             double area_factor;

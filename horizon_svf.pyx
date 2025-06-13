@@ -8,6 +8,7 @@ cdef extern from "mo_lradtopo_horayzon.h":
                           np.npy_uint32* ind_hori_out,
                           float* f_cor,
                           double* horizon_out,
+                          double* slope_out,
                           int num_vertex, int num_cell,
                           int num_hori_out,
                           int num_cell_parent, int num_cell_child_per_parent,
@@ -72,6 +73,9 @@ def horizon_svf_comp_py(np.ndarray[np.float64_t, ndim = 1] vlon,
     horizon_out: ndarray of double
         Array with terrain horizon for selected cells (num_hori_out, num_hori)
         [deg]
+    slope_out: ndarray of double
+        Array with terrain surface normal vector (local ENU coordinates)
+        for selected cells (num_hori_out, 3) [-]
     """
 
     # Check consistency and validity of input arguments
@@ -109,6 +113,8 @@ def horizon_svf_comp_py(np.ndarray[np.float64_t, ndim = 1] vlon,
         dtype=np.float32)
     cdef np.ndarray[np.float64_t, ndim = 2, mode = "c"] \
         horizon_out = np.empty((ind_hori_out.size, num_hori), dtype=np.float64)
+    cdef np.ndarray[np.float64_t, ndim = 2, mode = "c"] \
+        slope_out = np.empty((ind_hori_out.size, 3), dtype=np.float64)
 
     # Ensure that passed (multi-dimensional) arrays are contiguous in memory
     faces = np.ascontiguousarray(faces)
@@ -120,6 +126,7 @@ def horizon_svf_comp_py(np.ndarray[np.float64_t, ndim = 1] vlon,
                      &ind_hori_out[0],
                      &f_cor[0, 0, 0],
                      &horizon_out[0, 0],
+                     &slope_out[0, 0],
                      vlon.size, faces.shape[0],
                      ind_hori_out.size,
                      num_cell_parent, num_cell_child_per_parent,
@@ -127,4 +134,4 @@ def horizon_svf_comp_py(np.ndarray[np.float64_t, ndim = 1] vlon,
                      ray_org_elev, num_elev,
                      sw_dir_cor_max, cons_area_factor)
 
-    return f_cor, horizon_out
+    return f_cor, horizon_out, slope_out

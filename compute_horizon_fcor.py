@@ -110,6 +110,8 @@ locations = {
      "Vals":        (9.188711, 46.627758),
      "Piotta":      (8.688039, 46.514811),
      "Cevio":       (8.603161, 46.320486),
+     "south_face":  (9.730859, 46.181635),
+     "north_face":  (9.879585, 46.143744),
      }
 
 # Load data
@@ -163,7 +165,7 @@ print("Size of 'ind_hori_out':", ind_hori_out.size)
 # -----------------------------------------------------------------------------
 
 # Compute f_cor
-f_cor, horizon_out = horizon_svf_comp_py(
+f_cor, horizon_out, slope_out = horizon_svf_comp_py(
     vlon, vlat,
     elevation.astype(np.float64),
     faces,
@@ -180,6 +182,7 @@ ncfile.createDimension(dimname="num_cell_parent", size=f_cor.shape[0])
 ncfile.createDimension(dimname="num_hori", size=f_cor.shape[1])
 ncfile.createDimension(dimname="num_elev", size=f_cor.shape[2])
 ncfile.createDimension(dimname="num_hori_out", size=horizon_out.shape[0])
+ncfile.createDimension(dimname="vec_comp", size=3)
 # -----------------------------------------------------------------------------
 nc_data = ncfile.createVariable(varname="f_cor", datatype="f4",
                                 dimensions=("num_cell_parent", "num_hori",
@@ -199,6 +202,12 @@ nc_data = ncfile.createVariable(varname="horizon", datatype="f8",
 nc_data.units = "deg"
 nc_data.long_name = "Terrain horizon"
 nc_data[:] = horizon_out
+# -----------------------------------------------------------------------------
+nc_data = ncfile.createVariable(varname="slope", datatype="f8",
+                                dimensions=("num_hori_out", "vec_comp"))
+nc_data.units = "-"
+nc_data.long_name = "Terrain surface normal vector (local ENU coordinates)"
+nc_data[:] = slope_out
 # -----------------------------------------------------------------------------
 ncfile.close()
 t_end = perf_counter()

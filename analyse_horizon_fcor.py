@@ -25,19 +25,19 @@ path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
 # Load data
 # ----------------------------------------------------------------------------
 
-# 1km
-icon_res = "1km"
-file_mesh = "ICON_refined_mesh_mch_1km.nc"
-file_hori_fcor = "SW_dir_cor_" + "mch_" + icon_res + ".nc"
-file_extpar = "MeteoSwiss/extpar_grid_shift_topo/" \
-    + "extpar_icon_grid_0001_R19B08_mch.nc"
-
-# # 500m
-# icon_res = "500m"
-# file_mesh = "ICON_refined_mesh_mch_500m.nc"
+# # 1km
+# icon_res = "1km"
+# file_mesh = "ICON_refined_mesh_mch_1km.nc"
 # file_hori_fcor = "SW_dir_cor_" + "mch_" + icon_res + ".nc"
 # file_extpar = "MeteoSwiss/extpar_grid_shift_topo/" \
-#     + "extpar_icon_grid_00005_R19B09_DOM02.nc"
+#     + "extpar_icon_grid_0001_R19B08_mch.nc"
+
+# 500m
+icon_res = "500m"
+file_mesh = "ICON_refined_mesh_mch_500m.nc"
+file_hori_fcor = "SW_dir_cor_" + "mch_" + icon_res + ".nc"
+file_extpar = "MeteoSwiss/extpar_grid_shift_topo/" \
+    + "extpar_icon_grid_00005_R19B09_DOM02.nc"
 
 # Get initial information
 ds = xr.open_dataset(path_in_out + file_hori_fcor)
@@ -52,8 +52,39 @@ ind_cell_parent = ind_hori_out[slice(0, None, num_cell_child_per_parent)] \
 # Load information from SW_dir_cor computation
 ds = xr.open_dataset(path_in_out + file_hori_fcor)
 horizon_child = ds["horizon"].values # (num_hori_out, num_hori)
+slope_child = ds["slope"].values # (num_hori_out, 3)
 f_cor = ds["f_cor"][ind_cell_parent, :, :].values # (num_hori_out, num_hori)
 ds.close()
+
+# Temporary: check subgrid terrain surface normal vectors
+i = 5  # 0 - 3: MeteoSwiss stations,
+# 4: south-facing slope, 5: north-facing slope
+slic = slice(i * num_cell_child_per_parent,
+             (i + 1) * num_cell_child_per_parent)
+terrain_normals = slope_child[slic, :]
+slope_angle = np.arccos(terrain_normals[:, 2].clip(max=1.0))
+slope_aspect = np.pi / 2.0 - np.arctan2(terrain_normals[:, 1],
+                                         terrain_normals[:, 0])
+
+terrain_normal_av = terrain_normals.sum(axis=0)
+terrain_normal_av = terrain_normal_av / np.linalg.norm(terrain_normal_av)
+slope_angle_av = np.arccos(terrain_normal_av[2].clip(max=1.0))
+slope_aspect_av = np.pi / 2.0 - np.arctan2(terrain_normal_av[1],
+                                           terrain_normal_av[0])
+
+fig = plt.figure()
+ax = fig.add_subplot(projection="polar")
+ax.set_theta_zero_location("N") # type: ignore
+ax.set_theta_direction(-1) # type: ignore
+ax.scatter(slope_aspect, np.rad2deg(slope_angle), c="grey",
+           alpha=0.5)
+ax.scatter(slope_aspect_av, np.rad2deg(slope_angle_av), c="red",
+           s=50)
+# plt.show()
+fig.savefig("/scratch/mch/csteger/HORAYZON_extpar_subgrid/"
+            + "terrain_normals_" + icon_res + ".png", dpi=250)
+plt.close()
+
 
 # Load terrain horizon (grid-scale cell)
 ds = xr.open_dataset(path_ige + file_extpar)
