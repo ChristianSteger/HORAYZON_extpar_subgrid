@@ -12,4 +12,4 @@ export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 # conda activate horayzon_extpar_subgrid
 # srun -u python compute_horizon_fcor.py
-/users/csteger/miniconda3/envs/horayzon_extpar_subgrid/bin/python -u compute_horizon_fcor.py
+/users/csteger/miniconda3/envs/horayzon_extpar_subgrid/bin/python -u 2_compute_horizon_fcor.py
