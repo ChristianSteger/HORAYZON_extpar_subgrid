@@ -20,13 +20,11 @@ style.use("classic")
 # Paths
 path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
     + "ICON_grids_EXTPAR/"
-path_dem = "/store_new/mch/msopr/csteger/Data/DEMs/Copernicus_DEM/"
-path_plot = "/scratch/mch/csteger/HORAYZON_extpar/plots/"
+path_dem = "/scratch/mch/csteger/projects/topo_comparison/Copernicus_DEM/"
 path_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
 # path_ige = "/Users/csteger/Dropbox/MeteoSwiss/Data/Miscellaneous/" \
 #     + "ICON_grids_EXTPAR/"
 # path_dem = "/Users/csteger/Dropbox/MeteoSwiss/Data/DEMs/Copernicus_DEM/"
-# path_plots = "/Users/csteger/Desktop/"
 # path_out = "/Users/csteger/Desktop/"
 
 ###############################################################################
@@ -53,20 +51,20 @@ path_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
 # check_mesh = False
 # file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
 
-# # ICON MCH (1km)
-# icon_res = "1km"
-# icon_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc"
-# n_sel = 37 # (identical to theoretical value)
-# # n_sel = 33 # ('faces_child' < 16 GB)
-# check_mesh = False
-# file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
-
-# ICON MCH (500m)
-icon_res = "500m"
-icon_grid = "MeteoSwiss/icon_grid_00005_R19B09_DOM02.nc"
-n_sel = 18 # (identical to theoretical value)
+# ICON MCH (1km)
+icon_res = "1km"
+icon_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc"
+n_sel = 37 # (identical to theoretical value)
+# n_sel = 33 # ('faces_child' < 16 GB)
 check_mesh = False
 file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
+
+# # ICON MCH (500m)
+# icon_res = "500m"
+# icon_grid = "MeteoSwiss/icon_grid_00005_R19B09_DOM02.nc"
+# n_sel = 18 # (identical to theoretical value)
+# check_mesh = False
+# file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
 
 # -----------------------------------------------------------------------------
 
@@ -191,13 +189,17 @@ if check_mesh:
     plt.show()
     del triangles, triangles_child
 
+###############################################################################
+# Interpolate elevation data to refined mesh
+###############################################################################
+
 # Load raw DEM data (required domain)
 t_beg = perf_counter()
 add = 0.02 # 'safety margin' [deg]
-files_dem = ("Copernicus_DEM_N50-N40_W020-E000.nc",
-             "Copernicus_DEM_N50-N40_E000-E020.nc",
-             "Copernicus_DEM_N60-N50_W020-E000.nc",
-             "Copernicus_DEM_N60-N50_E000-E020.nc")
+files_dem = ("COPERNICUS_N50-N40_W020-E000.nc",
+             "COPERNICUS_N50-N40_E000-E020.nc",
+             "COPERNICUS_N60-N50_W020-E000.nc",
+             "COPERNICUS_N60-N50_E000-E020.nc")
 ds = xr.open_mfdataset([path_dem + i for i in files_dem],
                        mask_and_scale=False)
 ds = ds.sel(lon=slice(np.rad2deg(vlon.min()) - add,
@@ -256,7 +258,10 @@ if check_mesh:
     plt.show()
     del mask, triangles, triangles_child, celev_child
 
+###############################################################################
 # Write refined mesh to netCDF file
+###############################################################################
+
 t_beg = perf_counter()
 ncfile = Dataset(filename=path_out + file_out, mode="w", format="NETCDF4")
 ncfile.createDimension(dimname="num_vertex_child", size=vlon_child.size)

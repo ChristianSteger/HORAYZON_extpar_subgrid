@@ -1,6 +1,8 @@
 # Description: Compute terrain horizon and slope angle/aspect for sub-grid
-#              cells, spatially aggregated correction factors (f_cor) and
-#              compress f_cor information in discrete values.
+#              cells, compute f_cor values and spatially aggregate these
+#              values to the parent cell mesh. Additionally, it is possible
+#              to output terrain horizon and slope angle/aspect for selected
+#              sub-grid cells.
 #
 # Author: Christian R. Steger, May 2025
 
@@ -10,7 +12,7 @@ from time import perf_counter
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
-from matplotlib import style, tri, colors
+from matplotlib import style, tri
 from netCDF4 import Dataset
 
 from functions import centroid_values
@@ -39,13 +41,13 @@ from horizon_svf import horizon_svf_comp_py
 # file_mesh = "ICON_refined_mesh_mch_2km.nc"
 # file_out = "SW_dir_cor_" + "mch_" + icon_res + ".nc"
 
-# icon_res = "1km"
-# file_mesh = "ICON_refined_mesh_mch_1km.nc"
-# file_out = "SW_dir_cor_" + "mch_" + icon_res + ".nc"
-
-icon_res = "500m"
-file_mesh = "ICON_refined_mesh_mch_500m.nc"
+icon_res = "1km"
+file_mesh = "ICON_refined_mesh_mch_1km.nc"
 file_out = "SW_dir_cor_" + "mch_" + icon_res + ".nc"
+
+# icon_res = "500m"
+# file_mesh = "ICON_refined_mesh_mch_500m.nc"
+# file_out = "SW_dir_cor_" + "mch_" + icon_res + ".nc"
 
 # Settings
 check_plots = False
@@ -90,7 +92,7 @@ if check_plots:
 # Compute spatially aggregated correction factors (f_cor)
 ###############################################################################
 
-# Settings 
+# Settings
 num_hori = 24 # number of azimuth angles
 dist_search = 40_000.0 #  horizon search distance [m]
 ray_org_elev = 0.5 # 0.1, 0.2 [m]
@@ -106,21 +108,49 @@ cons_area_factor = 1 # use area factor for SW_dir correction factor
 
 # MeteoSwiss stations
 locations = {
-     "Vicosoprano": (9.6278,   46.353019),
-     "Vals":        (9.188711, 46.627758),
-     "Piotta":      (8.688039, 46.514811),
-     "Cevio":       (8.603161, 46.320486),
-     "south_face":  (9.730859, 46.181635),
-     "north_face":  (9.879585, 46.143744),
+     # ------- MeteoSwiss stations -----------
+     "Vicosoprano":     (9.6278,   46.353019),
+     "Vals":            (9.188711, 46.627758),
+     "Piotta":          (8.688039, 46.514811),
+     "Cevio":           (8.603161, 46.320486),
+     "Goeschenen":      (8.595364, 46.692678),
+     "Grono":           (9.163758, 46.255075),
+     "Glarus":          (9.066961, 47.034586),
+     # ---------------------------------------
+     "Veltlin_S_fac":   (9.730859, 46.181635),
+     "Veltlin_N_fac":   (9.879585, 46.143744),
+     "Kloental":        (8.992863, 47.013992),
+     "Limmeren":        (8.995542, 46.858968),
+     "Eiger_below":     (8.003756, 46.601543),
+     "Gondo":           (8.140656, 46.196015),
+     "Gondo_fort":      (8.113924, 46.195547),
+    "Calancatal_1":     (9.117380, 46.259365),
+    "Calancatal_2":     (9.114330, 46.301508),
+    "Calancatal_3":     (9.116637, 46.445454),
+    "Calancatal_4":     (9.113043, 46.469920),
+    "Windgael_below":   (8.722420, 46.813696),
+    "Schiben_below":    (8.960114, 46.820576),
+    "Linthal":          (8.981141, 46.864608),
+    "Engelhorn_below":  (8.163189, 46.668290),
+    "Gr_Scheidegg":     (8.101539, 46.655433),
+    "Lauterbrunnen_1":  (7.908836, 46.570909),
+    #  # --------------------------------------- only 1km and 500 m mesh!
+     "Kandertal_S_fac": (7.733795, 46.457283),
+     "Kandertal_val":   (7.737744, 46.445441),
+     "Kandertal_N_fac": (7.742341, 46.432649),
+    #  # --------------------------------------- only 500 m mesh!
+    #  "Gredetsch_E_fac": (7.924869, 46.356297),
+    #  "Gredetsch_val":   (7.933481, 46.357383),
+    #  "Gredetsch_W_fac": (7.940311, 46.357533)
+     # ---------------------------------------
      }
 
 # Load data
 path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
     + "ICON_grids_EXTPAR/"
-
 # icon_grid = "MeteoSwiss/icon_grid_0002_R19B07_mch.nc" # 2km
-# icon_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc" # 1km
-icon_grid = "MeteoSwiss/icon_grid_00005_R19B09_DOM02.nc" # 500m
+icon_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc" # 1km
+# icon_grid = "MeteoSwiss/icon_grid_00005_R19B09_DOM02.nc" # 500m
 ds = xr.open_dataset(path_ige + icon_grid)
 vlon_parent = np.rad2deg(ds["vlon"].values)
 vlat_parent = np.rad2deg(ds["vlat"].values)
@@ -270,36 +300,3 @@ if check_plots:
 # plt.xlabel("Number of parent cells")
 # plt.ylabel("Ray tracing time / number of parent cells [s]")
 # plt.show()
-
-###############################################################################
-# Temporary stuff to check C++ code...
-###############################################################################
-
-# rad_earth = 6371229.0
-# points_x = (rad_earth + elevation[0]) * np.cos(vlat[0]) * np.cos(vlon[0])
-# points_y = (rad_earth + elevation[0]) * np.cos(vlat[0]) * np.sin(vlon[0])
-# points_z = (rad_earth + elevation[0]) * np.sin(vlat[0])
-
-# faces_flat = faces.ravel()
-# for i in range(4):
-#     triangle = (int(faces_flat[(i * 3) + 0]),
-#                 int(faces_flat[(i * 3) + 1]),
-#                 int(faces_flat[(i * 3) + 2]))
-#     print(f"Triangle {i}: {triangle}")
-
-# rad_earth = 6371229.0
-# y = rad_earth * np.cos(np.deg2rad(45.1216))
-# z = rad_earth - rad_earth * np.sin(np.deg2rad(45.1216))
-# print("North Pole: ", y, z)
-
-# for i in range(num_cell_parent):
-#     for j in range(num_cell_child_per_parent):
-#         ind_cell = i * num_cell_child_per_parent + j
-# print(ind_cell)
-
-# num_elev = 91
-# elev_spac = np.deg2rad(90.0) / float(num_elev - 1)
-# elev_ang = 0.0
-# for m in range(num_elev -1):
-#     elev_ang += elev_spac
-#     print(np.rad2deg(elev_ang), m)
