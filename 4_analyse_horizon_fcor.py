@@ -1,9 +1,10 @@
 # Description: Analyse and compare computed f_cor and terrain horizon
 #
-# Author: Christian R. Steger, June 2025
+# Author: Christian R. Steger, August 2025
 
 import glob
 import datetime as dt
+import json
 
 import numpy as np
 import xarray as xr
@@ -14,45 +15,81 @@ from scipy.linalg import solve
 from scipy import interpolate
 from skyfield.api import load, wgs84
 
-
-from functions import centroid_values
-
 style.use("classic")
 
 # Paths
 path_in_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
 path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
     + "ICON_grids_EXTPAR/"
+path_plot = "/scratch/mch/csteger/HORAYZON_extpar_subgrid/plots/"
+
+###############################################################################
+# Function
+###############################################################################
+
+def spacing_exp_interp(x_start, x_end, num, exp, x_ip, y):
+    """
+    Linear interpolation from exponentially spaced data.
+    """
+    pos_norm = (x_ip - x_start) / (x_end - x_start)
+    if pos_norm <= 0.0:
+        print("x-value out of bounds (left)")
+        y_ip = 0.0
+    elif pos_norm >= 0.9999:
+        print("x-value out of bounds (right)")
+        y_ip =  1.0
+    else:
+        ind_left = int((num - 1) * pos_norm ** (1.0 / (exp + 1.0)))
+        x_left = x_start + (x_end - x_start) \
+            * (float(ind_left) / float(num - 1)) ** (exp + 1.0)
+        x_right = x_start + (x_end - x_start) \
+            * (float(ind_left + 1) / float(num - 1)) ** (exp + 1.0)
+        print("Left index: " + str(ind_left))
+        print(f"x_left: {x_left:.4f}, x_ip: {x_ip:.4f}, "
+              + f"x_right: {x_right:.4f}")
+        weight_left = (x_right - x_ip) / (x_right - x_left)
+        y_ip = y[ind_left] * weight_left \
+            + y[ind_left + 1] * (1.0 - weight_left)
+    return y_ip
 
 ###############################################################################
 # Compare diurnal cycle of SW_dir
 ###############################################################################
 
+# Settings
+# icon_res = "2km"
+icon_res = "1km"
+# icon_res = "500m"
+
 # Get available parent grid cell indices
-file_mesh = "ICON_refined_mesh_mch_1km.nc"
+file_mesh = f"ICON_refined_mesh_mch_{icon_res}.nc"
 ds = xr.open_dataset(path_in_out + file_mesh)
 num_cell_child_per_parent =  int(ds["num_cell_child_per_parent"].values)
 ds.close()
-file_fcor_hori = "SW_dir_cor_mch_1km.nc"
-ds = xr.open_dataset(path_in_out + file_fcor_hori)
+file_fcor = f"SW_dir_cor_mch_{icon_res}.nc"
+ds = xr.open_dataset(path_in_out + file_fcor)
 ind_child = ds["ind_hori_out"].values # index_cell_child
 ds.close()
 ind_parent = (ind_child[slice(0, None, num_cell_child_per_parent)]
               / num_cell_child_per_parent).astype(int)
 
+# Load locations
+file_json = path_in_out + f"locations_sel_{icon_res}.json"
+with open(file_json, "r") as f:
+    locations = json.load(f)
+
 # Select specific parent grid cell
-ind_sel = 23
-ind_parent_sel = ind_parent[ind_sel]
-# -> interesting stations:
 # 1: Vals
-# 2: Piotta (-> no radiation only in grid-scale cor.) --------------- favourite
+# 2: Piotta (-> radiation only in subgrid-scale cor.) --------------- favourite
 # 4: Goeschenen
 # 5: Grono
 # 10: Limmeren ------------------------------------------------------ favourite
-# 12 Gondo (-> no radiation only in grid-scale cor.)
+# 12 Gondo (-> radiation only in subgrid-scale cor.)
 # 14 Calancatal_1 --------------------------------------------------- favourite
-# 23 Lauterbrunnen_1 (-> strange looking grid-scale cor.) ----------- favourite
+# 23 Lauterbrunnen_1
 # 24 Kandertal_S_fac
+ind_loc = 10
+ind_parent_sel = ind_parent[ind_loc]
 
 # -----------------------------------------------------------------------------
 # Uncorrected and grid-scale corrected SW_dir
@@ -62,27 +99,22 @@ ind_parent_sel = ind_parent[ind_sel]
 # module load cdo/2.0.5-gcc
 # ls lffm*0.nc | wc -l
 # cdo cat -select,name=ASWDIR_S lffm*0.nc ASWDIR_S.nc
-path = "/scratch/mch/csteger/wd/24122500_63/lm_coarse/000/"
+path = "/scratch/mch/csteger/wd/24122500_74/lm_coarse/000/"
 ds = xr.open_dataset(path + "ASWDIR_S.nc")
 time_axis = ds["time"].values # time (UTC)
 seconds = (time_axis - time_axis[0]) / (10 ** 9) # seconds since start
-sw_dir = ds["ASWDIR_S"].values[:, ind_parent_sel] # cumulative values!
-sw_dir_uncor = (sw_dir[1:] * seconds[1:] - sw_dir[:-1] * seconds[:-1]) / np.diff(seconds) # [W m-2]
+sw_dir = ds["ASWDIR_S"][:, ind_parent_sel].values # cumulative values!
+sw_dir_uncor = np.diff(sw_dir * seconds) / np.diff(seconds) # [W m-2]
 ds.close()
 
 # Load grid-scaled corrected SW_dir
-path = "/scratch/mch/csteger/wd/24122500_64/lm_coarse/000/"
+# path = "/scratch/mch/csteger/wd/24122500_73/lm_coarse/000/"  # not 1/cos(slope)
+path = "/scratch/mch/csteger/wd/24122500_77/lm_coarse/000/" # 1/cos(slope)
 ds = xr.open_dataset(path + "ASWDIR_S.nc")
-sw_dir = ds["ASWDIR_S"].values[:, ind_parent_sel] # cumulative values!
-sw_dir_gs_cor = (sw_dir[1:] * seconds[1:] - sw_dir[:-1] * seconds[:-1]) / np.diff(seconds) # [W m-2]
+sw_dir = ds["ASWDIR_S"][:, ind_parent_sel].values # cumulative values!
+sw_dir_gs_cor = np.diff(sw_dir * seconds) / np.diff(seconds) # [W m-2]
 ds.close()
 time_axis = time_axis[:-1] + np.diff(time_axis) / 2.0
-
-# Drop certain time steps at start/end
-sel_ta = slice(6 * 5, -(6 * 5))
-time_axis = time_axis[sel_ta]
-sw_dir_uncor = sw_dir_uncor[sel_ta]
-sw_dir_gs_cor = sw_dir_gs_cor[sel_ta]
 
 # -----------------------------------------------------------------------------
 # Subgrid corrected SW_dir (from f_cor ray-tracing data)
@@ -111,126 +143,137 @@ for ind_i, ta in enumerate(time_axis_dt):
     sun_elev[ind_i] = alt.degrees
 
 # Compute interpolated f_cor values from array 'f_cor'
-file_fcor_hori = "SW_dir_cor_all_computed/SW_dir_cor_mch_1km.nc"
-ds = xr.open_dataset(path_in_out + file_fcor_hori)
-f_cor = ds["f_cor"][ind_parent_sel, :, :].values # (24, 91)
+file_in = f"SW_dir_cor_mch_{icon_res}.nc"
+ds = xr.open_dataset(path_in_out + file_in)
+f_cor_loc = ds["f_cor"][ind_parent_sel, :, :].values # (24, 91)
 ds.close()
-azim = np.arange(0.0, 360.0, 15.0) # [deg]
+azim = np.linspace(0.0, 360.0, 25) # cyclic, [deg]
 elev = np.linspace(0.0, 90.0, 91) # [deg]
-f_ip = interpolate.RectBivariateSpline(elev, azim, f_cor.transpose(),
-                                       kx=1, ky=1)
-f_cor_ip_large = np.empty(time_axis.size)
-for i in range(len(sun_azim)):
-    f_cor_ip_large[i] = f_ip(sun_elev[i], sun_azim[i])[0][0]
+f_cor_loc_cyc = np.vstack((f_cor_loc, f_cor_loc[0:1, :])) # (25, 91)
+f_ip = interpolate.RegularGridInterpolator((azim, elev), f_cor_loc_cyc,
+                                           bounds_error=False, fill_value=0.0)
+f_cor_ip = f_ip(np.vstack((sun_azim, sun_elev)).transpose())
 
 # Compute interpolated f_cor values from array 'f_cor_comp'
-file_fcor_comp = "SW_dir_cor_all_computed/SW_dir_cor_mch_1km_compressed.npy"
-f_cor_comp = np.load(path_in_out + file_fcor_comp)[:, ind_parent_sel] # (144)
-f_cor_comp = f_cor_comp.reshape((24, 6))
-f_cor_ip_comp = np.empty(time_axis.size)
-num_elem = 6
-for i in range(len(sun_azim)):
-    ind_azim_left = int(sun_azim[i] / 15.0)
-    ind_azim_right = ind_azim_left + 1
-    # print(azim[ind_azim_left], sun_azim[i], azim[ind_azim_right])
-    ind_azim = [ind_azim_left, ind_azim_right]
-    elev_sel = sun_elev[i]
-    f_cor_ip_lr = np.empty(2)
-    for j in range(2):
-        elev_start = f_cor_comp[ind_azim[j], 0]
-        elev_end = 90.0
-        exp = 1.0 # constant exponent
-        pos_norm = (elev_sel - elev_start) / (elev_end - elev_start) # normalised position
-        if pos_norm <= 0.0:
-            f_cor_ip = 0.0
-            ind_left, ind_right = None, None
-        elif pos_norm >= 1.0:
-            f_cor_ip = 1.0
-            ind_left, ind_right = None, None
-        else:
-            ind_left = int(pos_norm ** (1.0 / (exp + 1.0)) * num_elem) # pos_norm: [0.0 <, < 1.0]
-            ind_right = ind_left + 1
-            elev_left = elev_start + (elev_end - elev_start) * (ind_left / num_elem) ** (exp + 1)
-            elev_right = elev_start + (elev_end - elev_start) * (ind_right / num_elem) ** (exp + 1)
-            if ind_left == 0:
-                f_cor_left = 0.0
-                f_cor_right = f_cor_comp[ind_azim[j], ind_right]
-            elif ind_right == num_elem:
-                f_cor_left = f_cor_comp[ind_azim[j], ind_left]
-                f_cor_right = 1.0
-            else:
-                f_cor_left = f_cor_comp[ind_azim[j], ind_left]
-                f_cor_right = f_cor_comp[ind_azim[j], ind_right]
-            f_cor_ip = f_cor_left + (f_cor_right - f_cor_left) * (elev_sel - elev_left) / (elev_right - elev_left)
-        f_cor_ip_lr[j] = f_cor_ip
-    weight_right = (sun_azim[i] - azim[ind_azim_left]) / 15.0
-    weight_left = 1.0 - weight_right
-    # print(weight_left, weight_right)
-    f_cor_ip_comp[i] = (weight_left * f_cor_ip_lr[0] + weight_right * f_cor_ip_lr[1])
+exp_const = 1.2
+num_interp_nodes = 7
+x_end = 90.0
+file_npy = path_in_out + file_in[:-3] + "_compressed.npy"
+f_cor_comp = np.load(file_npy)[ind_parent_sel, :, :] # (24, 8)
+f_cor_ip_comp = np.zeros_like(f_cor_ip)
+for i in range(f_cor_ip_comp.size):
+    if sun_elev[i] > 0.0:
+            # Left f_cor ------------------------------------------------------
+            ind_azim_left = int(sun_azim[i] / 15.0)
+            x_start = f_cor_comp[ind_azim_left, 0]
+            f_cor_left = temp = spacing_exp_interp(
+                x_start, x_end, num_interp_nodes, exp_const,
+                sun_elev[i], f_cor_comp[ind_azim_left, 1:])
+            # Right f_cor -----------------------------------------------------
+            ind_azim_right = ind_azim_left + 1 # currently not wrapping around!
+            x_start = f_cor_comp[ind_azim_right, 0]
+            f_cor_right = temp = spacing_exp_interp(
+                x_start, x_end, num_interp_nodes, exp_const,
+                sun_elev[i], f_cor_comp[ind_azim_right, 1:])
+            # -----------------------------------------------------------------
+            azim_left = ind_azim_left * 15.0
+            weight_right = (sun_azim[i] - azim_left) / 15.0
+            f_cor_ip_comp[i] = (1.0 - weight_right) * f_cor_left \
+                + weight_right * f_cor_right
 
 # -----------------------------------------------------------------------------
-# Subgrid corrected SW_dir (from normal vector and horizon ray-tracing data)
+# Subgrid correction based on separate spatial aggregation of terrain slope
+# and terrain horizon
 # -----------------------------------------------------------------------------
 
-# # Load data
-# file_fcor_hori = "SW_dir_cor_mch_1km.nc"
-# ds = xr.open_dataset(path_in_out + file_fcor_hori)
-# slic = slice(ind_sel * num_cell_child_per_parent,
-#              (ind_sel + 1) * num_cell_child_per_parent)
-# horizon = ds["horizon"].values[slic, :]
-# slope = ds["slope"].values[slic, :]
-# ds.close()
+# Child grid information
+file_mesh = f"ICON_refined_mesh_mch_{icon_res}.nc"
+ds = xr.open_dataset(path_in_out + file_mesh)
+num_cell_child_per_parent = int(ds["num_cell_child_per_parent"])
+ds.close()
 
-# # Test plot
-# plt.figure()
-# for i in range(1369):
-#     plt.plot(horizon[i, :], color="grey", alpha=0.5)
-# #plt.show()
-# plt.savefig("/scratch/mch/csteger/HORAYZON_extpar_subgrid/ztemp.png",
-#             dpi=250)
-# plt.close()
+# Load subgrid terrain slope and horizon
+ds = xr.open_dataset(path_in_out + file_in)
+slice_sg = slice(ind_loc * num_cell_child_per_parent,
+                 (ind_loc + 1) * num_cell_child_per_parent)
+horizon = ds["horizon"][slice_sg, :].values # (24, 91)
+slope = ds["slope"][slice_sg, :].values # (24, 91)
+ds.close()
 
-# # Compute f_cor (without shadow mask)
-# terrain_slope = slope.mean(axis=0)
-# terrain_slope = terrain_slope / np.linalg.norm(terrain_slope) # (t-vector)
-# surf_norm = np.array([0.0, 0.0, 1.0]) # (h-vector)
-# sun_vector = np.empty((time_axis.size, 3))
-# sun_vector[:, 0] = np.cos(np.deg2rad(sun_elev)) * np.sin(np.deg2rad(sun_azim))
-# sun_vector[:, 1] = np.cos(np.deg2rad(sun_elev)) * np.cos(np.deg2rad(sun_azim))
-# sun_vector[:, 2] = np.sin(np.deg2rad(sun_elev))
+# Compute horizon percentiles and average terrain slope
+q = np.array([0.0, 25.0, 50.0, 75.0, 100.0])
+horizon_perc = np.percentile(horizon, q=q, axis=0)
+terrain_norm = slope.sum(axis=0)
+terrain_norm = terrain_norm / np.linalg.norm(terrain_norm)
+slope = np.arccos(terrain_norm[2].clip(max=1.0))
+aspect = np.pi / 2.0 - np.arctan2(terrain_norm[1], terrain_norm[0])
+print(f"Mean slope: {np.rad2deg(slope):.2f} deg, "
+      + f"mean aspect: {np.rad2deg(aspect):.2f} deg")
 
-# dot_prod_hs = np.dot(sun_vector, surf_norm)
-# dot_prod_ts = np.dot(sun_vector, terrain_slope)
+# Test plot
+plt.figure()
+for i in range(num_cell_child_per_parent):
+    plt.plot(horizon[i, :], color="gray", lw=0.5)
+for i in range(5):
+    plt.plot(horizon_perc[i, :], color="red", lw=0.5)
+plt.show()
 
-# f_cor = np.zeros(time_axis.size)
-# mask = (sun_elev > 0.0) & (dot_prod_ts > 0.0)
-# f_cor[mask] = (1.0 / dot_prod_hs[mask]) * (1.0 / np.dot(surf_norm, terrain_slope)) * dot_prod_ts[mask]
-# f_cor = f_cor.clip(max=10.0)
+# Compute f_cor
+horizontal_norm = np.array([0.0, 0.0, 1.0])
+horizon_perc_cyc = np.hstack((horizon_perc, horizon_perc[:, 0:1])) # (5, 25)
+f_ip = interpolate.interp1d(azim, horizon_perc_cyc, axis=1)
+frac_illuminated = q / 100.0
+f_cor_ip_sep = np.zeros_like(f_cor_ip)
+for i in range(f_cor_ip_comp.size):
+    if sun_elev[i] > 1.0:
+        sun = np.array([np.cos(np.deg2rad(sun_elev[i]))
+                        * np.sin(np.deg2rad(sun_azim[i])),
+                        np.cos(np.deg2rad(sun_elev[i]))
+                        * np.cos(np.deg2rad(sun_azim[i])),
+                        np.sin(np.deg2rad(sun_elev[i]))])
+        dot_ts = np.dot(terrain_norm, sun)
+        if dot_ts > 0.0:
+            horizon_perc_azim = f_ip(sun_azim[i])
+            mask_shadow = np.interp(sun_elev[i], horizon_perc_azim,
+                                    frac_illuminated)
+            f_cor_ip_sep[i] = (1.0 / np.dot(horizontal_norm, sun)) \
+                * (1.0 / np.dot(horizontal_norm, terrain_norm)) * dot_ts * mask_shadow
+f_cor_ip_sep = f_cor_ip_sep.clip(max=10)
 
+# -----------------------------------------------------------------------------
+# Plot
 # -----------------------------------------------------------------------------
 
 lw = 2.0
-plt.figure()
+plt.figure(figsize=(10, 6))
 plt.plot(time_axis, sw_dir_uncor, label="Uncorrected", color="black", lw=lw)
-plt.plot(time_axis, sw_dir_gs_cor, label="Cor. (gs)", color="blue", lw=lw)
-plt.plot(time_axis, sw_dir_uncor * f_cor_ip_large, label="Cor. (sgs; full)", color="salmon", lw=lw)
-plt.plot(time_axis, sw_dir_uncor * f_cor_ip_comp, label="Cor. (sgs; compressed)", color="red", lw=lw, ls="--")
+plt.plot(time_axis, sw_dir_gs_cor, label="Cor. (grid-scale)",
+         color="red", lw=lw)
+plt.plot(time_axis, sw_dir_uncor * f_cor_ip,
+         label="Cor. (subgrid-scale; full)", color="blue", lw=lw)
+plt.plot(time_axis, sw_dir_uncor * f_cor_ip_comp,
+         label="Cor. (subgrid-scale; comp.)", color="deepskyblue",
+         lw=lw, ls="--")
+
+plt.plot(time_axis, sw_dir_uncor * f_cor_ip_sep,
+         label="Cor. (subgrid-scale; sep.)", color="violet",
+         lw=lw, ls="--")
+
 plt.legend(frameon=False, fontsize=10)
 plt.xlabel("Time (UTC)")
 plt.ylabel("Direct beam shortwave radiation [W m-2]")
-# plt.title("Piotta (Ticino)", loc="left", fontsize=11)
-# plt.title("Limmeren (Glarus)", loc="left", fontsize=11)
-# plt.title("Val Calanca (Grisons)", loc="left", fontsize=11)
-plt.title("Lauterbrunnen (Bern)", loc="left", fontsize=11)
+plt.title(f"Grid cell: {locations[ind_loc][0]}", loc="left", fontsize=11)
 plt.title(time_axis_dt[0].strftime("%Y-%m-%d"), loc="right", fontsize=11)
-# plt.ylim([-5.0, 280.0]) # Piotta
 # plt.ylim([-5.0, 450.0]) # Limmeren
-# plt.ylim([-5.0, 300.0]) # Val Calanca
-plt.ylim([-5.0, 300.0]) # Lauterbrunnen
 # plt.show()
-plt.savefig("/scratch/mch/csteger/HORAYZON_extpar_subgrid/Diurnal_cycle.png",
-            dpi=250, bbox_inches="tight")
+plt.savefig(path_plot + f"diurnal_cycle_{locations[ind_loc][0]}.jpg",
+            dpi=300, bbox_inches="tight")
 plt.close()
+
+
+
+
+
 
 ###############################################################################
 # Compare terrain horizon

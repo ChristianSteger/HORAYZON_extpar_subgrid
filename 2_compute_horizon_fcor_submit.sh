@@ -5,11 +5,11 @@
 #SBATCH --output="job.out"
 #SBATCH --time=00:57:00
 #SBATCH --partition=postproc
-#SBATCH --cpus-per-task=32
+#SBATCH --cpus-per-task=64
 #SBATCH --exclusive
 
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 # conda activate horayzon_extpar_subgrid
-# srun -u python compute_horizon_fcor.py
+# srun -u python 2_compute_horizon_fcor.py
 /users/csteger/miniconda3/envs/horayzon_extpar_subgrid/bin/python -u 2_compute_horizon_fcor.py

@@ -22,10 +22,6 @@ path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
     + "ICON_grids_EXTPAR/"
 path_dem = "/scratch/mch/csteger/projects/topo_comparison/Copernicus_DEM/"
 path_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
-# path_ige = "/Users/csteger/Dropbox/MeteoSwiss/Data/Miscellaneous/" \
-#     + "ICON_grids_EXTPAR/"
-# path_dem = "/Users/csteger/Dropbox/MeteoSwiss/Data/DEMs/Copernicus_DEM/"
-# path_out = "/Users/csteger/Desktop/"
 
 ###############################################################################
 # Load ICON grid data and pre-process

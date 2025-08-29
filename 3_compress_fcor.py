@@ -106,7 +106,7 @@ exp_const = 1.2
 num_interp_nodes = 7
 
 # Input/output files
-file_in = "SW_dir_cor_mch_" + icon_res + ".nc"
+file_in = f"SW_dir_cor_mch_{icon_res}.nc"
 file_npy = path_in_out + file_in[:-3] + "_compressed.npy"
 
 # Compress f_cor if not yet done
@@ -114,7 +114,7 @@ if not os.path.isfile(file_npy):
 
     # Load data
     t_beg = perf_counter()
-    ds = xr.open_dataset(path_in_out + "SW_dir_cor_all_computed/" + file_in)
+    ds = xr.open_dataset(path_in_out + file_in)
     f_cor = ds["f_cor"].values # (num_cell_parent, num_hori, num_elev)
     ds.close()
     t_end = perf_counter()

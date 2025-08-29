@@ -533,10 +533,10 @@ void horizon_svf_comp(double* vlon, double* vlat,
             unsigned int ind_cell_ui32b = (unsigned int)ind_cell;
 
             // ------------------------------------------------------ temporary
-            // setting to accelerate computation for 'ind_hori_out'
-            if (ind_hori_out_set.find(ind_cell_ui32b) == ind_hori_out_set.end()) {
-                continue;
-            }
+            // // setting to accelerate computation for 'ind_hori_out'
+            // if (ind_hori_out_set.find(ind_cell_ui32b) == ind_hori_out_set.end()) {
+            //     continue;
+            // }
             // ------------------------------------------------------ temporary
 
             // Compute cell (triangle) centroid

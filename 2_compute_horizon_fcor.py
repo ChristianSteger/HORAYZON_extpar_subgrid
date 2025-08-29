@@ -8,6 +8,7 @@
 
 import sys
 from time import perf_counter
+import json
 
 import numpy as np
 import xarray as xr
@@ -106,44 +107,47 @@ cons_area_factor = 1 # use area factor for SW_dir correction factor
 # Select 'ind_hori_out' based on parent cell mesh
 # -----------------------------------------------------------------------------
 
-# MeteoSwiss stations
-locations = {
+# MeteoSwiss stations and interesting locations
+locations = [
      # ------- MeteoSwiss stations -----------
-     "Vicosoprano":     (9.6278,   46.353019),
-     "Vals":            (9.188711, 46.627758),
-     "Piotta":          (8.688039, 46.514811),
-     "Cevio":           (8.603161, 46.320486),
-     "Goeschenen":      (8.595364, 46.692678),
-     "Grono":           (9.163758, 46.255075),
-     "Glarus":          (9.066961, 47.034586),
+     ["Vicosoprano",     [9.6278,   46.353019]],
+     ["Vals",            [9.188711, 46.627758]],
+     ["Piotta",          [8.688039, 46.514811]],
+     ["Cevio",           [8.603161, 46.320486]],
+     ["Goeschenen",      [8.595364, 46.692678]],
+     ["Grono",           [9.163758, 46.255075]],
+     ["Glarus",          [9.066961, 47.034586]],
      # ---------------------------------------
-     "Veltlin_S_fac":   (9.730859, 46.181635),
-     "Veltlin_N_fac":   (9.879585, 46.143744),
-     "Kloental":        (8.992863, 47.013992),
-     "Limmeren":        (8.995542, 46.858968),
-     "Eiger_below":     (8.003756, 46.601543),
-     "Gondo":           (8.140656, 46.196015),
-     "Gondo_fort":      (8.113924, 46.195547),
-    "Calancatal_1":     (9.117380, 46.259365),
-    "Calancatal_2":     (9.114330, 46.301508),
-    "Calancatal_3":     (9.116637, 46.445454),
-    "Calancatal_4":     (9.113043, 46.469920),
-    "Windgael_below":   (8.722420, 46.813696),
-    "Schiben_below":    (8.960114, 46.820576),
-    "Linthal":          (8.981141, 46.864608),
-    "Engelhorn_below":  (8.163189, 46.668290),
-    "Gr_Scheidegg":     (8.101539, 46.655433),
-    "Lauterbrunnen_1":  (7.908836, 46.570909),
+     ["Veltlin_S_fac",   [9.730859, 46.181635]],
+     ["Veltlin_N_fac",   [9.879585, 46.143744]],
+     ["Kloental",        [8.992863, 47.013992]],
+     ["Limmeren",        [8.995542, 46.858968]],
+     ["Eiger_below",     [8.003756, 46.601543]],
+     ["Gondo",           [8.140656, 46.196015]],
+     ["Gondo_fort",      [8.113924, 46.195547]],
+     ["Calancatal_1",    [9.117380, 46.259365]],
+     ["Calancatal_2",    [9.114330, 46.301508]],
+     ["Calancatal_3",    [9.116637, 46.445454]],
+     ["Calancatal_4",    [9.113043, 46.469920]],
+     ["Windgael_below",  [8.722420, 46.813696]],
+     ["Schiben_below",   [8.960114, 46.820576]],
+     ["Linthal",         [8.981141, 46.864608]],
+     ["Engelhorn_below", [8.163189, 46.668290]],
+     ["Gr_Scheidegg",    [8.101539, 46.655433]],
+     ["Lauterbrunnen_1", [7.908836, 46.570909]],
     #  # --------------------------------------- only 1km and 500 m mesh!
-     "Kandertal_S_fac": (7.733795, 46.457283),
-     "Kandertal_val":   (7.737744, 46.445441),
-     "Kandertal_N_fac": (7.742341, 46.432649),
+     ["Kandertal_S_fac", [7.733795, 46.457283]],
+     ["Kandertal_val",   [7.737744, 46.445441]],
+     ["Kandertal_N_fac", [7.742341, 46.432649]],
     #  # --------------------------------------- only 500 m mesh!
-    #  "Gredetsch_E_fac": (7.924869, 46.356297),
-    #  "Gredetsch_val":   (7.933481, 46.357383),
-    #  "Gredetsch_W_fac": (7.940311, 46.357533)
+    #  ["Gredetsch_E_fac", [7.924869, 46.356297]],
+    #  ["Gredetsch_val",   [7.933481, 46.357383]],
+    #  ["Gredetsch_W_fac", [7.940311, 46.357533]]
      # ---------------------------------------
-     }
+    ]
+file_json = path_in_out + f"locations_sel_{icon_res}.json"
+with open(file_json, "w") as f:
+    json.dump(locations, f, indent=4)
 
 # Load data
 path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
@@ -164,33 +168,19 @@ triangles = tri.Triangulation(vlon_parent, vlat_parent,
 ds.close()
 
 # Get relevant cell indices
-ind_tri_all = {}
+ind_tri_all = np.empty(len(locations), dtype=np.uint32) # parent cell indices
 tri_finder = triangles.get_trifinder()
-for i in locations.keys():
-    ind_tri = int(tri_finder(*locations[i]))  # type: ignore
-    ind_tri_all[i] = ind_tri
-    print(i, ind_tri, clon_parent[ind_tri], clat_parent[ind_tri])
-
-# # Test plot of point in triangle
-# for i in locations.keys():
-#     fig = plt.figure()
-#     v0, v1, v2 = vertex_of_cell_parent[:, ind_tri_all[i]]
-#     plt.plot(vlon_parent[v0], vlat_parent[v0], "o", color="red")
-#     plt.plot(vlon_parent[v1], vlat_parent[v1], "o", color="red")
-#     plt.plot(vlon_parent[v2], vlat_parent[v2], "o", color="red")
-#     plt.plot(*locations[i], "o", color="blue")
-#     plt.savefig("/scratch/mch/csteger/HORAYZON_extpar_subgrid/plots/"
-#                 + f"point_triangle_{icon_res}_{i}.png", dpi=250)
-#     plt.close()
-
+for ind, loc in enumerate(locations):
+    ind_tri = int(tri_finder(*loc[1]))  # type: ignore
+    ind_tri_all[ind] = ind_tri
+    print(loc[0], ind_tri, clon_parent[ind_tri], clat_parent[ind_tri])
 ind_hori_out = np.array([], dtype=np.uint32)
-for i in locations.keys():
-    ind_hori_out = np.append(
-         ind_hori_out,
-         np.arange(ind_tri_all[i] * num_cell_child_per_parent,
-                   (ind_tri_all[i] + 1) * num_cell_child_per_parent,
-                   dtype=np.uint32))
-print("Size of 'ind_hori_out':", ind_hori_out.size)
+for ind in ind_tri_all:
+     ind_hori_out = np.append(
+          ind_hori_out,
+          np.arange(ind * num_cell_child_per_parent,
+                    (ind + 1) * num_cell_child_per_parent, dtype=np.uint32))
+print(f"Size of 'ind_hori_out': {ind_hori_out.size}")
 
 # -----------------------------------------------------------------------------
 

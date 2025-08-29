@@ -11,5 +11,5 @@
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 # conda activate horayzon_extpar_subgrid
-# srun -u python refine_icon_mesh.py
+# srun -u python 1_refine_icon_mesh.py
 /users/csteger/miniconda3/envs/horayzon_extpar_subgrid/bin/python -u 1_refine_icon_mesh.py
