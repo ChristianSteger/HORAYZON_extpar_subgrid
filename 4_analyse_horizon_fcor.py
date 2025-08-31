@@ -355,6 +355,24 @@ tri_finder = triangles.get_trifinder()
 ind_loc = 3 # (0, 1, 2, 3) (Vicosoprano, Vals, Piotta, Cevio)
 ind_tri = int(tri_finder(*locations[ind_loc][1])) # type: ignore
 
+# Compute sun position for specific day
+planets = load("de421.bsp")
+sun = planets["sun"]
+earth = planets["earth"]
+loc_lon, loc_lat = locations[ind_loc][1]
+loc_obs = earth + wgs84.latlon(loc_lat, loc_lon)
+time_axis_dt = [dt.datetime(2025, 9, 1, 4, tzinfo=dt.timezone.utc)
+                + dt.timedelta(minutes=5 * i) for i in range(170)]
+sun_azim = np.empty(len(time_axis_dt))
+sun_elev = np.empty(len(time_axis_dt))
+ts = load.timescale()
+for ind_i, ta in enumerate(time_axis_dt):
+    t = ts.from_datetime(ta)
+    astrometric = loc_obs.at(t).observe(sun)
+    alt, az, d = astrometric.apparent().altaz()
+    sun_azim[ind_i] = az.degrees
+    sun_elev[ind_i] = alt.degrees
+
 # Plot for location
 plt.figure(figsize=(10, 5))
 for i in range(num_cell_child_per_parent):
@@ -363,9 +381,11 @@ for i in range(num_cell_child_per_parent):
              color="grey", alpha=0.5)
 plt.plot(azim, horizon_child[ind_tri, :], color="red", alpha=1.0, lw=1.0)
 plt.plot(azim, horizon_grid_scale[:, ind_loc], color="black", linewidth=2.5)
+plt.plot(sun_azim, sun_elev, color="orange", ls="--", lw=1.0)
 plt.xlabel("Azimuth angle (clockwise from North) [deg]")
 plt.ylabel("Elevation angle [deg]")
 plt.title(f"Grid cell: {locations[ind_loc][0]}", loc="left", fontsize=11)
+plt.axis((0.0 - 2.0, 345.0 + 2.0, 0.0, 70.0))
 # plt.show()
 plt.savefig(path_plot + f"subgrid_horizon_station_{locations[ind_loc][0]}.jpg",
             dpi=300, bbox_inches="tight")
