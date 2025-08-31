@@ -88,7 +88,7 @@ with open(file_json, "r") as f:
 # 14 Calancatal_1 --------------------------------------------------- favourite
 # 23 Lauterbrunnen_1
 # 24 Kandertal_S_fac
-ind_loc = 10
+ind_loc = 14
 ind_parent_sel = ind_parent[ind_loc]
 
 # -----------------------------------------------------------------------------
@@ -210,13 +210,13 @@ aspect = np.pi / 2.0 - np.arctan2(terrain_norm[1], terrain_norm[0])
 print(f"Mean slope: {np.rad2deg(slope):.2f} deg, "
       + f"mean aspect: {np.rad2deg(aspect):.2f} deg")
 
-# Test plot
-plt.figure()
-for i in range(num_cell_child_per_parent):
-    plt.plot(horizon[i, :], color="gray", lw=0.5)
-for i in range(5):
-    plt.plot(horizon_perc[i, :], color="red", lw=0.5)
-plt.show()
+# # Test plot
+# plt.figure()
+# for i in range(num_cell_child_per_parent):
+#     plt.plot(horizon[i, :], color="gray", lw=0.5)
+# for i in range(5):
+#     plt.plot(horizon_perc[i, :], color="red", lw=0.5)
+# plt.show()
 
 # Compute f_cor
 horizontal_norm = np.array([0.0, 0.0, 1.0])
@@ -237,7 +237,8 @@ for i in range(f_cor_ip_comp.size):
             mask_shadow = np.interp(sun_elev[i], horizon_perc_azim,
                                     frac_illuminated)
             f_cor_ip_sep[i] = (1.0 / np.dot(horizontal_norm, sun)) \
-                * (1.0 / np.dot(horizontal_norm, terrain_norm)) * dot_ts * mask_shadow
+                * (1.0 / np.dot(horizontal_norm, terrain_norm)) \
+                    * dot_ts * mask_shadow
 f_cor_ip_sep = f_cor_ip_sep.clip(max=10)
 
 # -----------------------------------------------------------------------------
@@ -245,7 +246,7 @@ f_cor_ip_sep = f_cor_ip_sep.clip(max=10)
 # -----------------------------------------------------------------------------
 
 lw = 2.0
-plt.figure(figsize=(10, 6))
+plt.figure(figsize=(8.5, 6.0))
 plt.plot(time_axis, sw_dir_uncor, label="Uncorrected", color="black", lw=lw)
 plt.plot(time_axis, sw_dir_gs_cor, label="Cor. (grid-scale)",
          color="red", lw=lw)
@@ -264,40 +265,23 @@ plt.xlabel("Time (UTC)")
 plt.ylabel("Direct beam shortwave radiation [W m-2]")
 plt.title(f"Grid cell: {locations[ind_loc][0]}", loc="left", fontsize=11)
 plt.title(time_axis_dt[0].strftime("%Y-%m-%d"), loc="right", fontsize=11)
+plt.xlim(time_axis[30], time_axis[-31])
 # plt.ylim([-5.0, 450.0]) # Limmeren
 # plt.show()
 plt.savefig(path_plot + f"diurnal_cycle_{locations[ind_loc][0]}.jpg",
             dpi=300, bbox_inches="tight")
 plt.close()
 
-
-
-
-
-
 ###############################################################################
-# Compare terrain horizon
+# Compare subgrid f-cor with (sub-)gird terrain horizon of grid cell
 ###############################################################################
 
-# ----------------------------------------------------------------------------
-# Load data
-# ----------------------------------------------------------------------------
-
-# # 1km
-# icon_res = "1km"
-# file_mesh = "ICON_refined_mesh_mch_1km.nc"
-# file_hori_fcor = "SW_dir_cor_" + "mch_" + icon_res + ".nc"
-# file_extpar = "MeteoSwiss/extpar_grid_shift_topo/" \
-#     + "extpar_icon_grid_0001_R19B08_mch.nc"
-# file_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc"
-
-# 500m
-icon_res = "500m"
-file_mesh = "ICON_refined_mesh_mch_500m.nc"
+# 1km
+file_mesh = "ICON_refined_mesh_mch_1km.nc"
 file_hori_fcor = "SW_dir_cor_" + "mch_" + icon_res + ".nc"
 file_extpar = "MeteoSwiss/extpar_grid_shift_topo/" \
-    + "extpar_icon_grid_00005_R19B09_DOM02.nc"
-file_grid = "MeteoSwiss/icon_grid_00005_R19B09_DOM02.nc"
+    + "extpar_icon_grid_0001_R19B08_mch.nc"
+file_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc"
 
 # Get initial information
 ds = xr.open_dataset(path_in_out + file_hori_fcor)
@@ -312,122 +296,50 @@ ind_cell_parent = ind_hori_out[slice(0, None, num_cell_child_per_parent)] \
 # Load information from SW_dir_cor computation
 ds = xr.open_dataset(path_in_out + file_hori_fcor)
 horizon_child = ds["horizon"].values # (num_hori_out, num_hori)
-slope_child = ds["slope"].values # (num_hori_out, 3)
 f_cor = ds["f_cor"][ind_cell_parent, :, :].values # (num_hori_out, num_hori)
 ds.close()
 
-# -----------------------------------------------------------------------------
-# Compute slope angle and aspect for specific ICON grid cell
-# -----------------------------------------------------------------------------
-ind_sel = 8
-ind_cell = ind_cell_parent[ind_sel]
-ds = xr.open_dataset(path_ige + file_grid)
-neighbor_cell_index = ds["neighbor_cell_index"].values[:, ind_cell] - 1
-ind_cell_rel = np.append(ind_cell, neighbor_cell_index) # first: centre
-clon = ds["clon"].values[ind_cell_rel] # [rad]
-clat = ds["clat"].values[ind_cell_rel] # [rad]
-ds.close()
-ds = xr.open_dataset(path_ige + file_extpar)
-topography_c = ds["topography_c"].values[ind_cell_rel] # [m]
-ds.close()
-rad_earth = 6371229.0 # ICON/COSMO earth radius [m]
-x_ecef = (rad_earth + topography_c) * np.cos(clat) * np.cos(clon)
-y_ecef = (rad_earth + topography_c) * np.cos(clat) * np.sin(clon)
-z_ecef = (rad_earth + topography_c) * np.sin(clat)
-x_ecef_orig = x_ecef[0]
-y_ecef_orig = y_ecef[0]
-z_ecef_orig = z_ecef[0]
-sin_lon = np.sin(clon[0])
-cos_lon = np.cos(clon[0])
-sin_lat = np.sin(clat[0])
-cos_lat = np.cos(clat[0])
-x_enu = - sin_lon * (x_ecef - x_ecef_orig) \
-    + cos_lon * (y_ecef - y_ecef_orig)
-y_enu = - sin_lat * cos_lon * (x_ecef - x_ecef_orig) \
-    - sin_lat * sin_lon * (y_ecef - y_ecef_orig) \
-        + cos_lat * (z_ecef - z_ecef_orig)
-z_enu = + cos_lat * cos_lon * (x_ecef - x_ecef_orig) \
-    + cos_lat * sin_lon * (y_ecef - y_ecef_orig) \
-        + sin_lat * (z_ecef - z_ecef_orig)
-points = np.array([x_enu, y_enu, z_enu]).transpose()  # [m]
-A = points
-b = np.ones(4)
-ATA = A.T @ A
-ATb = A.T @ b
-plane_coeffs = solve(ATA, ATb)
-surface_normal = plane_coeffs / np.linalg.norm(plane_coeffs)
-if surface_normal[2] < 0:
-    surface_normal = -surface_normal  # Ensure normal points upwards
-slope = np.arccos(surface_normal[2].clip(max=1.0))
-aspect = np.pi / 2.0 - np.arctan2(surface_normal[1], surface_normal[0])
-if aspect < 0.0:
-    aspect += 2 * np.pi
-print(f"Slope angle: {np.rad2deg(slope):.2f} deg")
-print(f"Aspect angle: {np.rad2deg(aspect):.2f} deg")
-# -----------------------------------------------------------------------------
-
-
-# -----------------------------------------------------------------------------
-
-# Temporary: check subgrid terrain surface normal vectors
-i = ind_sel  # 0 - 3: MeteoSwiss stations,
-# 4: south-facing slope, 5: north-facing slope
-slic = slice(i * num_cell_child_per_parent,
-             (i + 1) * num_cell_child_per_parent)
-terrain_normals = slope_child[slic, :]
-slope_angle = np.arccos(terrain_normals[:, 2].clip(max=1.0))
-slope_aspect = np.pi / 2.0 - np.arctan2(terrain_normals[:, 1],
-                                         terrain_normals[:, 0])
-
-terrain_normal_av = terrain_normals.sum(axis=0)
-terrain_normal_av = terrain_normal_av / np.linalg.norm(terrain_normal_av)
-slope_angle_av = np.arccos(terrain_normal_av[2].clip(max=1.0))
-slope_aspect_av = np.pi / 2.0 - np.arctan2(terrain_normal_av[1],
-                                           terrain_normal_av[0])
-
-fig = plt.figure()
-ax = fig.add_subplot(projection="polar")
-ax.set_theta_zero_location("N") # type: ignore
-ax.set_theta_direction(-1) # type: ignore
-ax.scatter(slope_aspect, np.rad2deg(slope_angle), c="grey",
-           alpha=0.5)
-ax.scatter(slope_aspect_av, np.rad2deg(slope_angle_av), c="red",
-           s=50)
-ax.scatter(aspect, np.rad2deg(slope), c="green",
-           s=50)
-# plt.show()
-fig.savefig("/scratch/mch/csteger/HORAYZON_extpar_subgrid/"
-            + "terrain_normals_" + icon_res + ".png", dpi=250)
-plt.close()
-
-# -----------------------------------------------------------------------------
-
 # Load terrain horizon (grid-scale cell)
 ds = xr.open_dataset(path_ige + file_extpar)
-horizon_gs = ds["HORIZON"].values[:, ind_cell_parent]
+horizon_grid_scale = ds["HORIZON"].values[:, ind_cell_parent]
 ds.close()
 
+# Select location
 ind_loc = 1 # (0, 1, 2, 3) (Vicosoprano, Vals, Piotta, Cevio)
+
+# Compute subgrid-scale horizon statistics
+slice_loc = slice(ind_loc * num_cell_child_per_parent,
+                  (ind_loc + 1) * num_cell_child_per_parent)
+q = np.array([0.0, 25.0, 50.0, 75.0, 100.0])
+horizon_perc = np.percentile(horizon_child[slice_loc, :], q=q, axis=0)
+
+# Colormap
+levels = np.arange(0.0, 2.1, 0.1)
+cmap = plt.get_cmap("RdBu_r")
+norm = colors.BoundaryNorm(levels, ncolors=cmap.N, extend="max")
 
 # Plot for location
 azim = np.arange(0.0, 360.0, 360 // horizon_child.shape[1])
 elev = np.linspace(0.0, 90.0, 91)
 plt.figure(figsize=(10, 5))
 plt.pcolormesh(azim, elev, f_cor[ind_loc, :, :].transpose(), shading="auto",
-               cmap="RdBu_r", vmin=0.0, vmax=2.0)
-cbar = plt.colorbar()
-cbar.set_label("Subgrid SW_dir correction factor [-]", labelpad=10)
-plt.contour(azim, elev, f_cor[ind_loc, :, :].transpose(),
-            levels=[0.1, 0.5, 0.9], colors="grey",
-            linestyles=["--", "-", "--"], linewidths=1.5)
-plt.plot(azim, horizon_gs[:, ind_loc], color="black", linewidth=2.5)
+               cmap=cmap, norm=norm)
+cbar = plt.colorbar(pad=0.03)
+cbar.set_label("Subgrid SW_dir correction factor [-]", labelpad=8)
+for i in range(5):
+    plt.plot(azim, horizon_perc[i, :], color="grey", lw=1.0)
+plt.plot(azim, horizon_grid_scale[:, ind_loc], color="black", linewidth=2.5)
 plt.xlabel("Azimuth angle (clockwise from North) [deg]")
 plt.ylabel("Elevation angle [deg]")
+plt.axis((-8.0, 352.0, 0.0, 90.0))
+plt.title(f"Grid cell: {locations[ind_loc][0]}", loc="left", fontsize=11)
 # plt.show()
-plt.savefig("/scratch/mch/csteger/HORAYZON_extpar_subgrid/Vals.png",
-            dpi=250)
+plt.savefig(path_plot + f"f_cor_vs_sub_grid_horizon_"
+            + f"{locations[ind_loc][0]}.jpg", dpi=300, bbox_inches="tight")
 plt.close()
 
+###############################################################################
+# Compare subgrid-horizon with one from MCH weather station
 ###############################################################################
 
 # Load mesh data
@@ -439,17 +351,9 @@ ds.close()
 triangles = tri.Triangulation(vlon, vlat, faces)
 tri_finder = triangles.get_trifinder()
 
+# Select location
 ind_loc = 3 # (0, 1, 2, 3) (Vicosoprano, Vals, Piotta, Cevio)
-
-# MeteoSwiss stations
-locations = (
-     (9.6278,   46.353019), # Vicosoprano
-     (9.188711, 46.627758), # Vals
-     (8.688039, 46.514811), # Piotta
-     (8.603161, 46.320486), # Cevio
-)
-
-ind_tri = int(tri_finder(*locations[ind_loc])) # type: ignore
+ind_tri = int(tri_finder(*locations[ind_loc][1])) # type: ignore
 
 # Plot for location
 plt.figure(figsize=(10, 5))
@@ -458,52 +362,11 @@ for i in range(num_cell_child_per_parent):
              horizon_child[ind_loc * num_cell_child_per_parent + i, :],
              color="grey", alpha=0.5)
 plt.plot(azim, horizon_child[ind_tri, :], color="red", alpha=1.0, lw=1.0)
-plt.plot(azim, horizon_gs[:, ind_loc], color="black", linewidth=2.5)
+plt.plot(azim, horizon_grid_scale[:, ind_loc], color="black", linewidth=2.5)
 plt.xlabel("Azimuth angle (clockwise from North) [deg]")
 plt.ylabel("Elevation angle [deg]")
+plt.title(f"Grid cell: {locations[ind_loc][0]}", loc="left", fontsize=11)
 # plt.show()
-plt.savefig("/scratch/mch/csteger/HORAYZON_extpar_subgrid/Cevio.png",
-            dpi=250)
+plt.savefig(path_plot + f"subgrid_horizon_station_{locations[ind_loc][0]}.jpg",
+            dpi=300, bbox_inches="tight")
 plt.close()
-
-
-
-###############################################################################
-########## Old stuff below...
-###############################################################################
-
-# Grid information
-ds = xr.open_dataset(path_in_out + file_mesh)
-# vlon_child = np.rad2deg(ds["vlon"].values)
-# vlat_child = np.rad2deg(ds["vlat"].values)
-# slice_cells = slice(ind_hori_out[0], ind_hori_out[-1] + 1)
-# faces = ds["faces"][slice_cells, :].values
-num_cell_child_per_parent = int(ds["num_cell_child_per_parent"])
-ds.close()
-
-ind_parent = ind_hori_out[ind_loc * num_cell_child_per_parent] // num_cell_child_per_parent
-
-# Load terrain horizon (subgrid cells)
-ds = xr.open_dataset(path_in_out + file_hori_fcor)
-horizon = ds["horizon"].values # (num_hori_out, num_hori)
-ind_hori_out = ds["ind_hori_out"].values # (num_hori_out)
-ind_parent = ind_hori_out[ind * num_cell_child_per_parent] // num_cell_child_per_parent
-ds.close()
-
-
-
-# Plot
-azim = np.arange(0.0, 360.0, 360 // horizon.shape[1])
-fig = plt.figure(figsize=(10, 5))
-slice_hori = slice(ind * num_cell_child_per_parent,
-                   (ind + 1) * num_cell_child_per_parent)
-for i in range(num_cell_child_per_parent):
-    plt.plot(azim, horizon[slice_hori, :][i, :], color="grey", alpha=0.5)
-# plt.plot(azim, horizon.mean(axis=0), color="black", linewidth=2.0)
-# plt.plot(azim, horizon[ind_tri, :], color="red", alpha=0.5)
-plt.plot(azim, horizon_gs, color="blue", linewidth=2.0)
-plt.show()
-# plt.savefig(f"/scratch/mch/csteger/HORAYZON_extpar_subgrid/"
-#             + f"ter_horizon_{icon_res}.png",
-#             dpi=250)
-# plt.close()

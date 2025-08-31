@@ -91,8 +91,6 @@ plt.scatter(x_spac, np.ones_like(x_spac) * 1.02,
             s=50, color="red", edgecolors="black")
 plt.axis((x_start - 5.0, x_end + 5.0, 0.95, 1.05))
 plt.show()
-# plt.savefig(path_plot + "check_spacing_exp.jpg", dpi=300)
-# plt.close()
 
 ###############################################################################
 # Compress f_cor information and save to EXTPAR NetCDF file
