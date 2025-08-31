@@ -2,7 +2,6 @@
 #
 # Author: Christian R. Steger, August 2025
 
-import glob
 import datetime as dt
 import json
 
@@ -10,8 +9,6 @@ import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
 from matplotlib import style, tri, colors
-from netCDF4 import Dataset
-from scipy.linalg import solve
 from scipy import interpolate
 from skyfield.api import load, wgs84
 
@@ -379,9 +376,9 @@ for i in range(num_cell_child_per_parent):
     plt.plot(azim,
              horizon_child[ind_loc * num_cell_child_per_parent + i, :],
              color="grey", alpha=0.5)
-plt.plot(azim, horizon_child[ind_tri, :], color="red", alpha=1.0, lw=1.0)
-plt.plot(azim, horizon_grid_scale[:, ind_loc], color="black", linewidth=2.5)
-plt.plot(sun_azim, sun_elev, color="orange", ls="--", lw=1.0)
+plt.plot(azim, horizon_child[ind_tri, :], color="red", alpha=1.0, lw=1.5)
+plt.plot(azim, horizon_grid_scale[:, ind_loc], color="black", linewidth=2.0)
+plt.plot(sun_azim, sun_elev, color="orange", ls="--", lw=2.0)
 plt.xlabel("Azimuth angle (clockwise from North) [deg]")
 plt.ylabel("Elevation angle [deg]")
 plt.title(f"Grid cell: {locations[ind_loc][0]}", loc="left", fontsize=11)
