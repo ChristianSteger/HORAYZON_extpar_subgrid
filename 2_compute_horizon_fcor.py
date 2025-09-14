@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from matplotlib import style, tri
 from netCDF4 import Dataset
 
-from functions import centroid_values
+from functions.refine_icon_mesh import centroid_values
 
 style.use("classic")
 

@@ -13,7 +13,8 @@ from scipy.spatial import KDTree
 import pyinterp
 from netCDF4 import Dataset
 
-from functions import refine_mesh_nc, alpha_minmax, centroid_values
+from functions.refine_icon_mesh import refine_mesh_nc, alpha_minmax
+from functions.refine_icon_mesh import centroid_values
 
 style.use("classic")
 

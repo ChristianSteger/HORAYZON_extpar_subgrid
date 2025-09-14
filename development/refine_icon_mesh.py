@@ -14,8 +14,8 @@ import cartopy.feature as feature
 import trimesh
 from scipy.spatial import KDTree
 
-from functions import refine_mesh_4c_trimesh
-from functions import refine_mesh_4c_py, refine_mesh_4c_nb
+from functions.refine_icon_mesh import refine_mesh_4c_trimesh
+from functions.refine_icon_mesh import refine_mesh_4c_py, refine_mesh_4c_nb
 
 style.use("classic")
 
