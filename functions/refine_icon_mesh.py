@@ -1,4 +1,4 @@
-# Description: Auxiliary functions
+# Description: Auxiliary functions for ICON mesh refinement
 #
 # Author: Christian R. Steger, May 2025
 

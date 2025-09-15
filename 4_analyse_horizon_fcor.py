@@ -1,6 +1,6 @@
 # Description: Analyse and compare computed f_cor and terrain horizon
 #
-# Author: Christian R. Steger, August 2025
+# Author: Christian R. Steger, September 2025
 
 import datetime as dt
 import json
@@ -12,6 +12,8 @@ from matplotlib import style, tri, colors
 from scipy import interpolate
 from skyfield.api import load, wgs84
 
+from functions.fcor_processing import spacing_exp, spacing_exp_interp
+
 style.use("classic")
 
 # Paths
@@ -19,35 +21,6 @@ path_in_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
 path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
     + "ICON_grids_EXTPAR/"
 path_plot = "/scratch/mch/csteger/HORAYZON_extpar_subgrid/plots/"
-
-###############################################################################
-# Function
-###############################################################################
-
-def spacing_exp_interp(x_start, x_end, num, exp, x_ip, y):
-    """
-    Linear interpolation from exponentially spaced data.
-    """
-    pos_norm = (x_ip - x_start) / (x_end - x_start)
-    if pos_norm <= 0.0:
-        print("x-value out of bounds (left)")
-        y_ip = 0.0
-    elif pos_norm >= 0.9999:
-        print("x-value out of bounds (right)")
-        y_ip =  1.0
-    else:
-        ind_left = int((num - 1) * pos_norm ** (1.0 / (exp + 1.0)))
-        x_left = x_start + (x_end - x_start) \
-            * (float(ind_left) / float(num - 1)) ** (exp + 1.0)
-        x_right = x_start + (x_end - x_start) \
-            * (float(ind_left + 1) / float(num - 1)) ** (exp + 1.0)
-        print("Left index: " + str(ind_left))
-        print(f"x_left: {x_left:.4f}, x_ip: {x_ip:.4f}, "
-              + f"x_right: {x_right:.4f}")
-        weight_left = (x_right - x_ip) / (x_right - x_left)
-        y_ip = y[ind_left] * weight_left \
-            + y[ind_left + 1] * (1.0 - weight_left)
-    return y_ip
 
 ###############################################################################
 # Compare diurnal cycle of SW_dir
@@ -139,7 +112,7 @@ for ind_i, ta in enumerate(time_axis_dt):
     sun_azim[ind_i] = az.degrees
     sun_elev[ind_i] = alt.degrees
 
-# Compute interpolated f_cor values from array 'f_cor'
+# Compute interpolated f_cor values from dense 'f_cor'-array
 file_in = f"SW_dir_cor_mch_{icon_res}.nc"
 ds = xr.open_dataset(path_in_out + file_in)
 f_cor_loc = ds["f_cor"][ind_parent_sel, :, :].values # (24, 91)
@@ -149,33 +122,33 @@ elev = np.linspace(0.0, 90.0, 91) # [deg]
 f_cor_loc_cyc = np.vstack((f_cor_loc, f_cor_loc[0:1, :])) # (25, 91)
 f_ip = interpolate.RegularGridInterpolator((azim, elev), f_cor_loc_cyc,
                                            bounds_error=False, fill_value=0.0)
-f_cor_ip = f_ip(np.vstack((sun_azim, sun_elev)).transpose())
+f_cor_ip_dense = f_ip(np.vstack((sun_azim, sun_elev)).transpose())
 
 # Compute interpolated f_cor values from array 'f_cor_comp'
-exp_const = 1.2
-num_interp_nodes = 7
-x_end = 90.0
-file_npy = path_in_out + file_in[:-3] + "_compressed.npy"
-f_cor_comp = np.load(file_npy)[ind_parent_sel, :, :] # (24, 8)
-f_cor_ip_comp = np.zeros_like(f_cor_ip)
-for i in range(f_cor_ip_comp.size):
+eta = 2.1
+num_elem = 8
+elev_end = 90.0
+file_npy = path_in_out + f"f_cor_sparse_{icon_res}.npy"
+f_cor_sparse = np.load(file_npy)[ind_parent_sel, :, :] # (24, 8)
+f_cor_ip_sparse = np.zeros_like(f_cor_ip_dense)
+for i in range(f_cor_ip_sparse.size):
     if sun_elev[i] > 0.0:
             # Left f_cor ------------------------------------------------------
             ind_azim_left = int(sun_azim[i] / 15.0)
-            x_start = f_cor_comp[ind_azim_left, 0]
-            f_cor_left = temp = spacing_exp_interp(
-                x_start, x_end, num_interp_nodes, exp_const,
-                sun_elev[i], f_cor_comp[ind_azim_left, 1:])
+            elev_start = f_cor_sparse[ind_azim_left, 0]
+            f_cor_left = spacing_exp_interp(
+                elev_start, elev_end, num_elem - 1, eta,
+                sun_elev[i], f_cor_sparse[ind_azim_left, 1:])
             # Right f_cor -----------------------------------------------------
             ind_azim_right = ind_azim_left + 1 # currently not wrapping around!
-            x_start = f_cor_comp[ind_azim_right, 0]
+            elev_start = f_cor_sparse[ind_azim_right, 0]
             f_cor_right = temp = spacing_exp_interp(
-                x_start, x_end, num_interp_nodes, exp_const,
-                sun_elev[i], f_cor_comp[ind_azim_right, 1:])
+                elev_start, elev_end, num_elem - 1, eta,
+                sun_elev[i], f_cor_sparse[ind_azim_right, 1:])
             # -----------------------------------------------------------------
             azim_left = ind_azim_left * 15.0
             weight_right = (sun_azim[i] - azim_left) / 15.0
-            f_cor_ip_comp[i] = (1.0 - weight_right) * f_cor_left \
+            f_cor_ip_sparse[i] = (1.0 - weight_right) * f_cor_left \
                 + weight_right * f_cor_right
 
 # -----------------------------------------------------------------------------
@@ -220,8 +193,8 @@ horizontal_norm = np.array([0.0, 0.0, 1.0])
 horizon_perc_cyc = np.hstack((horizon_perc, horizon_perc[:, 0:1])) # (5, 25)
 f_ip = interpolate.interp1d(azim, horizon_perc_cyc, axis=1)
 frac_illuminated = q / 100.0
-f_cor_ip_sep = np.zeros_like(f_cor_ip)
-for i in range(f_cor_ip_comp.size):
+f_cor_ip_sep = np.zeros_like(f_cor_ip_dense)
+for i in range(f_cor_ip_sep.size):
     if sun_elev[i] > 1.0:
         sun = np.array([np.cos(np.deg2rad(sun_elev[i]))
                         * np.sin(np.deg2rad(sun_azim[i])),
@@ -245,16 +218,16 @@ f_cor_ip_sep = f_cor_ip_sep.clip(max=10)
 lw = 2.0
 plt.figure(figsize=(8.5, 6.0))
 plt.plot(time_axis, sw_dir_uncor, label="Uncorrected", color="black", lw=lw)
-plt.plot(time_axis, sw_dir_gs_cor, label="Cor. (grid-scale)",
+plt.plot(time_axis, sw_dir_gs_cor, label="Cor. (grid)",
          color="red", lw=lw)
-plt.plot(time_axis, sw_dir_uncor * f_cor_ip,
-         label="Cor. (subgrid-scale; full)", color="blue", lw=lw)
-plt.plot(time_axis, sw_dir_uncor * f_cor_ip_comp,
-         label="Cor. (subgrid-scale; comp.)", color="deepskyblue",
+plt.plot(time_axis, sw_dir_uncor * f_cor_ip_dense,
+         label="Cor. (subgrid; dense)", color="blue", lw=lw)
+plt.plot(time_axis, sw_dir_uncor * f_cor_ip_sparse,
+         label="Cor. (subgrid; sparse)", color="deepskyblue",
          lw=lw, ls="--")
 
 plt.plot(time_axis, sw_dir_uncor * f_cor_ip_sep,
-         label="Cor. (subgrid-scale; sep.)", color="violet",
+         label="Cor. (subgrid; separate)", color="violet",
          lw=lw, ls="--")
 
 plt.legend(frameon=False, fontsize=10)
@@ -262,8 +235,7 @@ plt.xlabel("Time (UTC)")
 plt.ylabel("Direct beam shortwave radiation [W m-2]")
 plt.title(f"Grid cell: {locations[ind_loc][0]}", loc="left", fontsize=11)
 plt.title(time_axis_dt[0].strftime("%Y-%m-%d"), loc="right", fontsize=11)
-plt.xlim(time_axis[30], time_axis[-31])
-# plt.ylim([-5.0, 450.0]) # Limmeren
+plt.xlim(time_axis[35], time_axis[-36])
 # plt.show()
 plt.savefig(path_plot + f"diurnal_cycle_{locations[ind_loc][0]}.jpg",
             dpi=300, bbox_inches="tight")
