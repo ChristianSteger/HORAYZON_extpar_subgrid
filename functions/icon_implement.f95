@@ -7,7 +7,7 @@
 !
 ! Author: Christian Steger, September 2024
 
-SUBROUTINE interpolate(horizon, ztheta_sun, zphi_sun, fcor_sun)
+SUBROUTINE interpolate_fcor(horizon, ztheta_sun, zphi_sun, fcor_sun)
 
   IMPLICIT NONE
 
@@ -101,4 +101,4 @@ SUBROUTINE interpolate(horizon, ztheta_sun, zphi_sun, fcor_sun)
   ! Interpolate f_cor-value at azimuth angle
   fcor_sun = (fcor_right*(rad2deg*zphi_sun-zihor*ii) + fcor_left*(zihor*(ii+1)-rad2deg*zphi_sun))/ zihor
 
-END SUBROUTINE interpolate
+END SUBROUTINE interpolate_fcor

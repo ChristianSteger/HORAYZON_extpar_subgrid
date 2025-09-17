@@ -6,7 +6,7 @@ import numpy as np
 import xarray as xr
 
 from functions.fcor_processing import spacing_exp, spacing_exp_interp
-from functions.icon_implement import interpolate # type: ignore
+from functions.icon_implement import interpolate_fcor # type: ignore
 
 ###############################################################################
 # Test
@@ -93,5 +93,5 @@ print(f"fcor_sun: {f_cor_sun:.4f}")
 # -----------------------------------------------------------------------------
 print("ICON (Fortran) implementation".center(60, '-'))
 
-f_cor_sun = interpolate(f_cor_sparse, ztheta_sun, zphi_sun)
+f_cor_sun = interpolate_fcor(f_cor_sparse, ztheta_sun, zphi_sun)
 print(f"fcor_sun: {f_cor_sun:.4f}")

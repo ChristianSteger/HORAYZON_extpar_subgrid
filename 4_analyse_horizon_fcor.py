@@ -9,12 +9,19 @@ import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
 from matplotlib import style, tri, colors
+import matplotlib as mpl
 from scipy import interpolate
 from skyfield.api import load, wgs84
 
-from functions.fcor_processing import spacing_exp, spacing_exp_interp
+from functions.icon_implement import interpolate_fcor # type: ignore
 
 style.use("classic")
+
+# Change latex fonts
+mpl.rcParams["mathtext.fontset"] = "custom"
+# custom mathtext font (set default to Bitstream Vera Sans)
+mpl.rcParams["mathtext.default"] = "rm"
+mpl.rcParams["mathtext.rm"] = "Bitstream Vera Sans"
 
 # Paths
 path_in_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
@@ -124,32 +131,19 @@ f_ip = interpolate.RegularGridInterpolator((azim, elev), f_cor_loc_cyc,
                                            bounds_error=False, fill_value=0.0)
 f_cor_ip_dense = f_ip(np.vstack((sun_azim, sun_elev)).transpose())
 
-# Compute interpolated f_cor values from array 'f_cor_comp'
-eta = 2.1
-num_elem = 8
-elev_end = 90.0
-file_npy = path_in_out + f"f_cor_sparse_{icon_res}.npy"
-f_cor_sparse = np.load(file_npy)[ind_parent_sel, :, :] # (24, 8)
+# Interpolated f_cor values from array 'f_cor_sparse' (EXTPAR array format)
+file = "/scratch/mch/csteger/ICON-CH1-EPS_copy/" \
+    + "external_parameter_icon_grid_0001_R19B08_mch_tuned_f_cor_sparse.nc"
+ds = xr.open_dataset(file)
+num_gc_icon = ds["cell"].size
+f_cor_sparse_extpar = ds["HORIZON"][:, ind_parent_sel].values
+ds.close()
 f_cor_ip_sparse = np.zeros_like(f_cor_ip_dense)
 for i in range(f_cor_ip_sparse.size):
-    if sun_elev[i] > 0.0:
-            # Left f_cor ------------------------------------------------------
-            ind_azim_left = int(sun_azim[i] / 15.0)
-            elev_start = f_cor_sparse[ind_azim_left, 0]
-            f_cor_left = spacing_exp_interp(
-                elev_start, elev_end, num_elem - 1, eta,
-                sun_elev[i], f_cor_sparse[ind_azim_left, 1:])
-            # Right f_cor -----------------------------------------------------
-            ind_azim_right = ind_azim_left + 1 # currently not wrapping around!
-            elev_start = f_cor_sparse[ind_azim_right, 0]
-            f_cor_right = temp = spacing_exp_interp(
-                elev_start, elev_end, num_elem - 1, eta,
-                sun_elev[i], f_cor_sparse[ind_azim_right, 1:])
-            # -----------------------------------------------------------------
-            azim_left = ind_azim_left * 15.0
-            weight_right = (sun_azim[i] - azim_left) / 15.0
-            f_cor_ip_sparse[i] = (1.0 - weight_right) * f_cor_left \
-                + weight_right * f_cor_right
+    zphi_sun = np.deg2rad(sun_azim[i])
+    ztheta_sun = np.deg2rad(sun_elev[i])
+    f_cor_ip_sparse[i] = interpolate_fcor(f_cor_sparse_extpar,
+                                          ztheta_sun, zphi_sun)
 
 # -----------------------------------------------------------------------------
 # Subgrid correction based on separate spatial aggregation of terrain slope
@@ -232,7 +226,7 @@ plt.plot(time_axis, sw_dir_uncor * f_cor_ip_sep,
 
 plt.legend(frameon=False, fontsize=10)
 plt.xlabel("Time (UTC)")
-plt.ylabel("Direct beam shortwave radiation [W m-2]")
+plt.ylabel(r"Direct beam shortwave radiation [W m$^{-2}$]")
 plt.title(f"Grid cell: {locations[ind_loc][0]}", loc="left", fontsize=11)
 plt.title(time_axis_dt[0].strftime("%Y-%m-%d"), loc="right", fontsize=11)
 plt.xlim(time_axis[35], time_axis[-36])
@@ -290,11 +284,11 @@ norm = colors.BoundaryNorm(levels, ncolors=cmap.N, extend="max")
 # Plot for location
 azim = np.arange(0.0, 360.0, 360 // horizon_child.shape[1])
 elev = np.linspace(0.0, 90.0, 91)
-plt.figure(figsize=(10, 5))
+plt.figure(figsize=(11.0, 5.5))
 plt.pcolormesh(azim, elev, f_cor[ind_loc, :, :].transpose(), shading="auto",
                cmap=cmap, norm=norm)
 cbar = plt.colorbar(pad=0.03)
-cbar.set_label("Subgrid SW_dir correction factor [-]", labelpad=8)
+cbar.set_label(r"Subgrid SW$_{dir}$ correction factor [-]", labelpad=8)
 for i in range(5):
     plt.plot(azim, horizon_perc[i, :], color="grey", lw=1.0)
 plt.plot(azim, horizon_grid_scale[:, ind_loc], color="black", linewidth=2.5)
@@ -343,17 +337,23 @@ for ind_i, ta in enumerate(time_axis_dt):
     sun_elev[ind_i] = alt.degrees
 
 # Plot for location
-plt.figure(figsize=(10, 5))
+plt.figure(figsize=(11.0, 5.5))
 for i in range(num_cell_child_per_parent):
-    plt.plot(azim,
+    l_sg, = plt.plot(azim,
              horizon_child[ind_loc * num_cell_child_per_parent + i, :],
              color="grey", alpha=0.5)
-plt.plot(azim, horizon_child[ind_tri, :], color="red", alpha=1.0, lw=1.5)
-plt.plot(azim, horizon_grid_scale[:, ind_loc], color="black", linewidth=2.0)
-plt.plot(sun_azim, sun_elev, color="orange", ls="--", lw=2.0)
+l_sg_station, = plt.plot(azim, horizon_child[ind_tri, :], color="red", alpha=1.0, lw=1.5)
+l_g, = plt.plot(azim, horizon_grid_scale[:, ind_loc], color="black", linewidth=2.0)
+plt.plot(sun_azim, sun_elev, color="darkorange", ls="--", lw=2.0)
 plt.xlabel("Azimuth angle (clockwise from North) [deg]")
 plt.ylabel("Elevation angle [deg]")
 plt.title(f"Grid cell: {locations[ind_loc][0]}", loc="left", fontsize=11)
+plt.title(f"Sun path: {time_axis_dt[0].strftime("%Y-%m-%d")}", loc="right",
+          fontsize=11, color="darkorange")
+plt.legend([l_sg, l_sg_station, l_g],
+           ["Subgrid horizons", "Subgrid horizon (MeteoSwiss station)",
+            "Grid-scale horizon"],
+            frameon=False, fontsize=9, loc="upper left")
 plt.axis((0.0 - 2.0, 345.0 + 2.0, 0.0, 70.0))
 # plt.show()
 plt.savefig(path_plot + f"subgrid_horizon_station_{locations[ind_loc][0]}.jpg",
