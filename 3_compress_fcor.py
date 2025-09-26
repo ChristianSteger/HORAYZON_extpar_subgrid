@@ -221,7 +221,8 @@ np.save(path_in_out + f"f_cor_sparse_{icon_res}.npy", f_cor_sparse)
 
 # Save to EXTPAR NetCDF file (write 'f_cor' to 'HORIZON' field)
 path_extpar = "/scratch/mch/csteger/ICON-CH1-EPS_copy/"
-file = "external_parameter_icon_grid_0001_R19B08_mch_tuned.nc"
+# file = "external_parameter_icon_grid_0001_R19B08_mch_tuned.nc"
+file = "extpar_icon_grid_0001_R19B08_mch_copernicus_ray.nc"
 t_beg = perf_counter()
 ds = xr.open_dataset(path_extpar + file)
 ds = ds.drop_vars("HORIZON")
