@@ -1,6 +1,7 @@
-# Description: Refined ICON mesh for terrain horizon computation
+# Description: Refined ICON mesh and interpolate digital elevation model (DEM)
+#              data on refined mesh.
 #
-# Author: Christian R. Steger, May 2025
+# Author: Christian R. Steger, January 2026
 
 import math
 from time import perf_counter
@@ -12,6 +13,8 @@ from matplotlib import style, tri
 from scipy.spatial import KDTree
 import pyinterp
 from netCDF4 import Dataset
+# import richdem as rd
+# from skimage.measure import label
 
 from functions.refine_icon_mesh import refine_mesh_nc, alpha_minmax
 from functions.refine_icon_mesh import centroid_values
@@ -21,7 +24,6 @@ style.use("classic")
 # Paths
 path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
     + "ICON_grids_EXTPAR/"
-path_dem = "/scratch/mch/csteger/projects/topo_comparison/Copernicus_DEM/"
 path_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
 
 ###############################################################################
@@ -32,13 +34,17 @@ path_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
 # Settings
 # -----------------------------------------------------------------------------
 
-# # ICON test (2km)
-# icon_res = "2km"
-# icon_grid = "test/icon_grid_DOM01.nc"
-# # n_sel = 73 # mesh refinement level (identical to theoretical value)
-# n_sel = 36 # temporary for testing
-# check_mesh = True # optional (computational intensive) mesh checking steps
-# file_out = "ICON_refined_mesh_" + "test_" + icon_res + ".nc"
+# Select DEM
+# dem_name = "Copernicus"
+dem_name = "ASTER"
+
+# ICON test (2km)
+icon_res = "2km"
+icon_grid = "test/icon_grid_DOM01.nc"
+# n_sel = 73 # mesh refinement level (identical to theoretical value)
+n_sel = 36 # temporary for testing
+check_mesh = True # optional (computational intensive) mesh checking steps
+file_out = "ICON_refined_mesh_" + "test_" + icon_res + ".nc"
 
 # # ICON MCH (2km)
 # icon_res = "2km"
@@ -48,13 +54,13 @@ path_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
 # check_mesh = False
 # file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
 
-# ICON MCH (1km)
-icon_res = "1km"
-icon_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc"
-n_sel = 37 # (identical to theoretical value)
-# n_sel = 33 # ('faces_child' < 16 GB)
-check_mesh = False
-file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
+# # ICON MCH (1km)
+# icon_res = "1km"
+# icon_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc"
+# n_sel = 37 # (identical to theoretical value)
+# # n_sel = 33 # ('faces_child' < 16 GB)
+# check_mesh = False
+# file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
 
 # # ICON MCH (500m)
 # icon_res = "500m"
@@ -190,25 +196,72 @@ if check_mesh:
 # Interpolate elevation data to refined mesh
 ###############################################################################
 
-# Load raw DEM data (required domain)
-t_beg = perf_counter()
+# Load raw DEM data for required domain
 add = 0.02 # 'safety margin' [deg]
-files_dem = ("COPERNICUS_N50-N40_W020-E000.nc",
-             "COPERNICUS_N50-N40_E000-E020.nc",
-             "COPERNICUS_N60-N50_W020-E000.nc",
-             "COPERNICUS_N60-N50_E000-E020.nc")
-ds = xr.open_mfdataset([path_dem + i for i in files_dem],
-                       mask_and_scale=False)
-ds = ds.sel(lon=slice(np.rad2deg(vlon.min()) - add,
-                      np.rad2deg(vlon.max()) + add),
-            lat=slice(np.rad2deg(vlat.max()) + add,
-                      np.rad2deg(vlat.min()) - add))
-lon_dem = np.deg2rad(ds["lon"].values) # float64, [rad]
-lat_dem = np.deg2rad(ds["lat"].values) # float64, [rad]
-elevation_dem = ds["elevation"].values # int16, [m]
-ds.close()
-t_end = perf_counter()
-print(f"Load raw DEM: {t_end - t_beg:.1f} s")
+if dem_name == "Copernicus":
+    path_dem = "/scratch/mch/csteger/projects/topo_comparison/Copernicus_DEM/"
+    t_beg = perf_counter()
+    files_dem = ("COPERNICUS_N50-N40_W020-E000.nc",
+                 "COPERNICUS_N50-N40_E000-E020.nc",
+                 "COPERNICUS_N60-N50_W020-E000.nc",
+                 "COPERNICUS_N60-N50_E000-E020.nc")
+    ds = xr.open_mfdataset([path_dem + i for i in files_dem],
+                        mask_and_scale=False)
+    ds = ds.sel(lon=slice(np.rad2deg(vlon.min()) - add,
+                        np.rad2deg(vlon.max()) + add),
+                lat=slice(np.rad2deg(vlat.max()) + add,
+                        np.rad2deg(vlat.min()) - add))
+    lon_dem = np.deg2rad(ds["lon"].values) # float64, [rad]
+    lat_dem = np.deg2rad(ds["lat"].values) # float64, [rad]
+    elevation_dem = ds["elevation"].values # int16, [m]
+    ds.close()
+    t_end = perf_counter()
+    print(f"Load raw DEM: {t_end - t_beg:.1f} s")
+elif dem_name == "ASTER":
+    # -------------------------------------------------------------------------
+    path_dem = "/store_new/mch/c2sm/extpar_raw_data/topo/aster/"
+    t_beg = perf_counter()
+    files_dem = ("ASTER_orig_T018.nc", "ASTER_orig_T019.nc",
+                 "ASTER_orig_T030.nc", "ASTER_orig_T031.nc",
+                 "ASTER_orig_T042.nc", "ASTER_orig_T043.nc")
+    ds = xr.open_mfdataset([path_dem + i for i in files_dem],
+                        mask_and_scale=False)
+    ds = ds.sel(lon=slice(np.rad2deg(vlon.min()) - add,
+                        np.rad2deg(vlon.max()) + add),
+                lat=slice(np.rad2deg(vlat.max()) + add,
+                        np.rad2deg(vlat.min()) - add))
+    lon_dem = np.deg2rad(ds["lon"].values) # float64, [rad]
+    lat_dem = np.deg2rad(ds["lat"].values) # float64, [rad]
+    elevation_dem = ds["Z"].values # int16, [m]
+    ds.close()
+    t_end = perf_counter()
+    print(f"Load raw DEM: {t_end - t_beg:.1f} s")
+    # -------------------------------------------------------------------------
+    # Improve artefacts in DEM (-> steep north facing slopes)
+    # -------------------------------------------------------------------------
+    # path_temp = "/scratch/mch/csteger/temp/"
+    # dem_rd = rd.rdarray(elevation_dem, no_data=-9999)
+    # filled = rd.FillDepressions(dem_rd, epsilon=False, in_place=False)
+    # elev_diff = (filled - elevation_dem)
+    # mask_diff = (elev_diff != 0).astype(np.int32)
+    # labels, num = label(mask_diff, background=0, return_num=True,
+    #                     connectivity=2)  # type: ignore
+    # elev_diff_max = np.zeros_like(elev_diff)
+    # for i in range(1, num + 1):
+    #     region = (labels == i)
+    #     diff_max = elev_diff[region].max()
+    #     elev_diff_max[region] = diff_max
+    #     if diff_max > 100:
+    #         print("Interpolate region")
+    #         pass
+    # ds["Z_filled"] = (("lat", "lon"), filled)
+    # ds["elev_diff"] = (("lat", "lon"),elev_diff)
+    # ds["labels"] = (("lat", "lon"), labels)
+    # ds["elev_diff_max"] = (("lat", "lon"), elev_diff_max)
+    # ds.to_netcdf(path_temp + "ASTER_subdom_filled.nc")
+    # -------------------------------------------------------------------------
+else:
+    raise ValueError("Unknown DEM name")
 
 # Interpolate elevation data on refined mesh vertices
 t_beg = perf_counter()
@@ -281,6 +334,7 @@ nc_data = ncfile.createVariable(varname="elevation", datatype="f4",
                                 dimensions=("num_vertex_child"))
 nc_data.units = "m"
 nc_data.long_name = "elevation of vertices"
+nc_data.source = dem_name + " DEM"
 nc_data[:] = velev_child
 # -----------------------------------------------------------------------------
 nc_data = ncfile.createVariable(varname="faces", datatype="u4",
