@@ -219,6 +219,7 @@ f_cor, horizon_out, slope_out = horizon_svf_comp_py(
 t_beg = perf_counter()
 ncfile = Dataset(filename=path_in_out + file_out, mode="w", format="NETCDF4")
 ncfile.dem_source = dem_name
+ncfile.area_factor_used = str(bool(cons_area_factor))
 ncfile.createDimension(dimname="num_cell_parent", size=f_cor.shape[0])
 ncfile.createDimension(dimname="num_hori", size=f_cor.shape[1])
 ncfile.createDimension(dimname="num_elev", size=f_cor.shape[2])
