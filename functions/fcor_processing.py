@@ -139,9 +139,9 @@ print("Using", get_num_threads(), "threads")
 @measure_time
 @njit((float32[:, :, :])(float32[:, :, :], float32[:], int64, float32),
       parallel=True)
-def fcor_sparse_eta_const(f_cor_dense, elev_dense, num_elem, eta):
+def fcor_sparse_eta_global(f_cor_dense, elev_dense, num_elem, eta):
     """
-    Compress f_cor information using constant exponent 'eta' for all locations.
+    Compress f_cor information using a global exponent 'eta'.
     """
     f_cor_sparse = np.empty((f_cor_dense.shape[0], 24, num_elem),
                             dtype=np.float32)
@@ -162,11 +162,10 @@ def fcor_sparse_eta_const(f_cor_dense, elev_dense, num_elem, eta):
 @measure_time
 @njit((float32[:, :, :])(float32[:, :, :], float32[:], int64, float32[:], 
                          float32), parallel=True)
-def fcor_sparse_eta_opt(f_cor_dense, elev_dense, num_elem, eta_range,
-                        rad_zenith):
+def fcor_sparse_eta_local(f_cor_dense, elev_dense, num_elem, eta_range,
+                          rad_zenith):
     """
-    Compress f_cor information using an optimal exponent 'eta' for every
-    location.
+    Compress f_cor information using an local optimal exponent 'eta'.
     """
     f_cor_sparse = np.empty((f_cor_dense.shape[0], 24, num_elem),
                             dtype=np.float32)
@@ -213,8 +212,8 @@ def fcor_sparse_eta_opt(f_cor_dense, elev_dense, num_elem, eta_range,
 @measure_time
 @njit((int64[:])(float32[:, :, :], float32[:], float32[:, :, :], int64,
                  float32, float32, int64, float32), parallel=True)
-def dev_bins_eta_const(f_cor_dense, elev_dense, f_cor_sparse,
-                       num_elem, eta, rad_zenith, bin_size, scaling):
+def dev_bins_eta_global(f_cor_dense, elev_dense, f_cor_sparse,
+                        num_elem, eta, rad_zenith, bin_size, scaling):
     """
     Compute binned deviations for 'f_cor_sparse' with respect to reference 
     data ('f_cor_dense'). Parallel version.
@@ -235,8 +234,11 @@ def dev_bins_eta_const(f_cor_dense, elev_dense, f_cor_sparse,
                                           num_elem - 1, eta)
                 f_cor_ip = np.interp(elev_dense, elev_sparse,
                                     f_cor_sparse[ind_loc, ind_azim, 1:])
-                f_cor_diff = np.abs(f_cor_dense[ind_loc, ind_azim, :]
-                                    - f_cor_ip)
+                # -> out-of-bounds interpolation behaviour:
+                #    x < xp[0]  -> fp[0]
+                #    x > xp[-1] -> fp[-1]
+                f_cor_diff = np.abs(f_cor_ip
+                                    - f_cor_dense[ind_loc, ind_azim, :])
                 deviations = f_cor_diff * sol_ang_sin * rad_zenith
                 indices = np.floor(deviations * scaling).astype(np.int64)[0:71]
                 # -> only consider elevation angles up to 70 degrees
@@ -248,8 +250,8 @@ def dev_bins_eta_const(f_cor_dense, elev_dense, f_cor_sparse,
 @measure_time
 @njit((int64[:])(float32[:, :, :], float32[:], float32[:, :, :], int64,
                  float32, int64, float32), parallel=True)
-def dev_bins_eta_opt(f_cor_dense, elev_dense, f_cor_sparse,
-                    num_elem, rad_zenith, bin_size, scaling):
+def dev_bins_eta_local(f_cor_dense, elev_dense, f_cor_sparse,
+                       num_elem, rad_zenith, bin_size, scaling):
     """
     Compute binned deviations for 'f_cor_sparse' with respect to reference 
     data ('f_cor_dense'). Parallel version.
@@ -271,8 +273,11 @@ def dev_bins_eta_opt(f_cor_dense, elev_dense, f_cor_sparse,
                                           num_elem - 2, eta)
                 f_cor_ip = np.interp(elev_dense, elev_sparse,
                                     f_cor_sparse[ind_loc, ind_azim, 2:])
-                f_cor_diff = np.abs(f_cor_dense[ind_loc, ind_azim, :]
-                                    - f_cor_ip)
+                # -> out-of-bounds interpolation behaviour:
+                #    x < xp[0]  -> fp[0]
+                #    x > xp[-1] -> fp[-1]
+                f_cor_diff = np.abs(f_cor_ip
+                                    - f_cor_dense[ind_loc, ind_azim, :])
                 deviations = f_cor_diff * sol_ang_sin * rad_zenith
                 indices = np.floor(deviations * scaling).astype(np.int64)[0:71]
                 # -> only consider elevation angles up to 70 degrees
