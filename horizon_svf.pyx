@@ -121,7 +121,7 @@ def horizon_svf_comp_py(np.ndarray[np.float64_t, ndim = 1] vlon,
         f_cor = np.zeros((num_cell_parent, num_hori, num_elev),
         dtype=np.float32)
     cdef np.ndarray[np.float32_t, ndim = 3, mode = "c"] \
-        shadow_angle = np.zeros((num_cell_parent, num_hori, 3),
+        shadow_angle = np.empty((num_cell_parent, num_hori, 3),
         dtype=np.float32)
     cdef np.ndarray[np.float32_t, ndim = 2, mode = "c"] \
         terrain_normal = np.zeros((num_cell_parent, 3),

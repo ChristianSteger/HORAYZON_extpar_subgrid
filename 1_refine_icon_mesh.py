@@ -41,8 +41,8 @@ dem_name = "ASTER"
 # ICON test (2km)
 icon_res = "2km"
 icon_grid = "test/icon_grid_DOM01.nc"
-# n_sel = 73 # mesh refinement level (identical to theoretical value)
-n_sel = 36 # temporary for testing
+n_sel = 73 # mesh refinement level (identical to theoretical value)
+# n_sel = 36 # temporary for testing
 check_mesh = True # optional (computational intensive) mesh checking steps
 file_out = "ICON_refined_mesh_" + "test_" + icon_res + ".nc"
 

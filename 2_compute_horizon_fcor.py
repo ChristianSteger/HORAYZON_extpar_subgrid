@@ -34,13 +34,13 @@ from horizon_svf import horizon_svf_comp_py
 ###############################################################################
 
 # Select mesh file
-# icon_res = "2km"
-# file_mesh = "ICON_refined_mesh_test_2km.nc"
-# file_out = "SW_dir_cor_" + "test_" + icon_res + ".nc"
-
 icon_res = "2km"
-file_mesh = "ICON_refined_mesh_mch_2km.nc"
-file_out = "SW_dir_cor_" + "mch_" + icon_res + ".nc"
+file_mesh = "ICON_refined_mesh_test_2km.nc"
+file_out = "SW_dir_cor_" + "test_" + icon_res + ".nc"
+
+# icon_res = "2km"
+# file_mesh = "ICON_refined_mesh_mch_2km.nc"
+# file_out = "SW_dir_cor_" + "mch_" + icon_res + ".nc"
 
 # icon_res = "1km"
 # file_mesh = "ICON_refined_mesh_mch_1km.nc"
@@ -108,111 +108,111 @@ cons_area_factor = 0 # use area factor for SW_dir correction factor ############
 # Select 'ind_hori_out' based on parent cell mesh
 # -----------------------------------------------------------------------------
 
-# -------------------------------------------------------------
-# MeteoSwiss stations and interesting locations
-# -------------------------------------------------------------
-locations = [
-     # ------- MeteoSwiss stations -----------
-     ["Vicosoprano",     [9.6278,   46.353019]],
-     ["Vals",            [9.188711, 46.627758]],
-     ["Piotta",          [8.688039, 46.514811]],
-     ["Cevio",           [8.603161, 46.320486]],
-     ["Goeschenen",      [8.595364, 46.692678]],
-     ["Grono",           [9.163758, 46.255075]],
-     ["Glarus",          [9.066961, 47.034586]],
-     # ---------------------------------------
-     ["Veltlin_S_fac",   [9.730859, 46.181635]],
-     ["Veltlin_N_fac",   [9.879585, 46.143744]],
-     ["Kloental",        [8.992863, 47.013992]],
-     ["Limmeren",        [8.995542, 46.858968]],
-     ["Eiger_below",     [8.003756, 46.601543]],
-     ["Gondo",           [8.140656, 46.196015]],
-     ["Gondo_fort",      [8.113924, 46.195547]],
-     ["Calancatal_1",    [9.117380, 46.259365]],
-     ["Calancatal_2",    [9.114330, 46.301508]],
-     ["Calancatal_3",    [9.116637, 46.445454]],
-     ["Calancatal_4",    [9.113043, 46.469920]],
-     ["Windgael_below",  [8.722420, 46.813696]],
-     ["Schiben_below",   [8.960114, 46.820576]],
-     ["Linthal",         [8.981141, 46.864608]],
-     ["Engelhorn_below", [8.163189, 46.668290]],
-     ["Gr_Scheidegg",    [8.101539, 46.655433]],
-     ["Lauterbrunnen_1", [7.908836, 46.570909]],
-    #  # --------------------------------------- only 1km and 500 m mesh!
-     ["Kandertal_S_fac", [7.733795, 46.457283]],
-     ["Kandertal_val",   [7.737744, 46.445441]],
-     ["Kandertal_N_fac", [7.742341, 46.432649]],
-    #  # --------------------------------------- 
-     ["Oberrohrdorf",    [8.312873, 47.420988]],
-     ["Napf",            [7.935345, 47.002321]],
-     ["Zuerich",         [8.533633, 47.375246]],
-     ["Walensee",        [9.234161, 47.121523]],
-     ["Po_valley",       [9.509584, 45.426837]],
-    #  # --------------------------------------- 
-     ["Piz_Aul",         [9.124848, 46.622926]],
-     ["Zefreilahorn",    [9.065229, 46.552159]],
-     ["Rheinwaldhorn",   [9.040183, 46.493834]],
-     ["Finsteraarhorn",  [8.126588, 46.537015]],
-     ["Schreckhorn",     [8.119095, 46.589719]],
-     ["Kroenten",        [8.569259, 46.782166]],
-     ["Piz_Cengalo",     [9.602163, 46.294972]],
-     ["Piz_Bernina",     [9.908377, 46.382217]]
-    #  # --------------------------------------- only 500 m mesh!
-    #  ["Gredetsch_E_fac", [7.924869, 46.356297]],
-    #  ["Gredetsch_val",   [7.933481, 46.357383]],
-    #  ["Gredetsch_W_fac", [7.940311, 46.357533]]
-     # ---------------------------------------
-    ]
-# -------------------------------------------------------------
-# All MeteoSwiss stations
-# -------------------------------------------------------------
-# path_obs = "/scratch/mch/csteger/temp/movero_obs_data/"
-# file_obs = path_obs + "20241224sfc.atab"
-# data = np.genfromtxt(file_obs, skip_header=13, max_rows=4, dtype=str,
-#                      autostrip=True)
-# station_names = data[0, 1:]
-# lat_obs = data[1, 1:].astype(np.float32)
-# lon_obs = data[2, 1:].astype(np.float32)
-# locations = [[str(name), [float(lon), float(lat)]]
-#              for name, lat, lon in zip(station_names, lat_obs, lon_obs)]
 # # -------------------------------------------------------------
-file_json = path_in_out + f"locations_sel_{icon_res}.json"
-with open(file_json, "w") as f:
-    json.dump(locations, f, indent=4)
+# # MeteoSwiss stations and interesting locations
+# # -------------------------------------------------------------
+# locations = [
+#      # ------- MeteoSwiss stations -----------
+#      ["Vicosoprano",     [9.6278,   46.353019]],
+#      ["Vals",            [9.188711, 46.627758]],
+#      ["Piotta",          [8.688039, 46.514811]],
+#      ["Cevio",           [8.603161, 46.320486]],
+#      ["Goeschenen",      [8.595364, 46.692678]],
+#      ["Grono",           [9.163758, 46.255075]],
+#      ["Glarus",          [9.066961, 47.034586]],
+#      # ---------------------------------------
+#      ["Veltlin_S_fac",   [9.730859, 46.181635]],
+#      ["Veltlin_N_fac",   [9.879585, 46.143744]],
+#      ["Kloental",        [8.992863, 47.013992]],
+#      ["Limmeren",        [8.995542, 46.858968]],
+#      ["Eiger_below",     [8.003756, 46.601543]],
+#      ["Gondo",           [8.140656, 46.196015]],
+#      ["Gondo_fort",      [8.113924, 46.195547]],
+#      ["Calancatal_1",    [9.117380, 46.259365]],
+#      ["Calancatal_2",    [9.114330, 46.301508]],
+#      ["Calancatal_3",    [9.116637, 46.445454]],
+#      ["Calancatal_4",    [9.113043, 46.469920]],
+#      ["Windgael_below",  [8.722420, 46.813696]],
+#      ["Schiben_below",   [8.960114, 46.820576]],
+#      ["Linthal",         [8.981141, 46.864608]],
+#      ["Engelhorn_below", [8.163189, 46.668290]],
+#      ["Gr_Scheidegg",    [8.101539, 46.655433]],
+#      ["Lauterbrunnen_1", [7.908836, 46.570909]],
+#     #  # --------------------------------------- only 1km and 500 m mesh!
+#      ["Kandertal_S_fac", [7.733795, 46.457283]],
+#      ["Kandertal_val",   [7.737744, 46.445441]],
+#      ["Kandertal_N_fac", [7.742341, 46.432649]],
+#     #  # ---------------------------------------
+#      ["Oberrohrdorf",    [8.312873, 47.420988]],
+#      ["Napf",            [7.935345, 47.002321]],
+#      ["Zuerich",         [8.533633, 47.375246]],
+#      ["Walensee",        [9.234161, 47.121523]],
+#      ["Po_valley",       [9.509584, 45.426837]],
+#     #  # ---------------------------------------
+#      ["Piz_Aul",         [9.124848, 46.622926]],
+#      ["Zefreilahorn",    [9.065229, 46.552159]],
+#      ["Rheinwaldhorn",   [9.040183, 46.493834]],
+#      ["Finsteraarhorn",  [8.126588, 46.537015]],
+#      ["Schreckhorn",     [8.119095, 46.589719]],
+#      ["Kroenten",        [8.569259, 46.782166]],
+#      ["Piz_Cengalo",     [9.602163, 46.294972]],
+#      ["Piz_Bernina",     [9.908377, 46.382217]]
+#     #  # --------------------------------------- only 500 m mesh!
+#     #  ["Gredetsch_E_fac", [7.924869, 46.356297]],
+#     #  ["Gredetsch_val",   [7.933481, 46.357383]],
+#     #  ["Gredetsch_W_fac", [7.940311, 46.357533]]
+#      # ---------------------------------------
+#     ]
+# # -------------------------------------------------------------
+# # All MeteoSwiss stations
+# # -------------------------------------------------------------
+# # path_obs = "/scratch/mch/csteger/temp/movero_obs_data/"
+# # file_obs = path_obs + "20241224sfc.atab"
+# # data = np.genfromtxt(file_obs, skip_header=13, max_rows=4, dtype=str,
+# #                      autostrip=True)
+# # station_names = data[0, 1:]
+# # lat_obs = data[1, 1:].astype(np.float32)
+# # lon_obs = data[2, 1:].astype(np.float32)
+# # locations = [[str(name), [float(lon), float(lat)]]
+# #              for name, lat, lon in zip(station_names, lat_obs, lon_obs)]
+# # # -------------------------------------------------------------
+# file_json = path_in_out + f"locations_sel_{icon_res}.json"
+# with open(file_json, "w") as f:
+#     json.dump(locations, f, indent=4)
 
-# Load data
-path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
-    + "ICON_grids_EXTPAR/"
-# icon_grid = "test/icon_grid_DOM01.nc"
-icon_grid = "MeteoSwiss/icon_grid_0002_R19B07_mch.nc" # 2km
-# icon_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc" # 1km
-# icon_grid = "MeteoSwiss/icon_grid_00005_R19B09_DOM02.nc" # 500m
-ds = xr.open_dataset(path_ige + icon_grid)
-vlon_parent = np.rad2deg(ds["vlon"].values)
-vlat_parent = np.rad2deg(ds["vlat"].values)
-clon_parent = np.rad2deg(ds["clon"].values)
-clat_parent = np.rad2deg(ds["clat"].values)
-if clon_parent.size != num_cell_parent:
-    raise ValueError("Inconsistent data loaded")
-vertex_of_cell_parent = ds["vertex_of_cell"].values - 1
-triangles = tri.Triangulation(vlon_parent, vlat_parent,
-                              vertex_of_cell_parent.transpose())
-ds.close()
+# # Load data
+# path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
+#     + "ICON_grids_EXTPAR/"
+# # icon_grid = "test/icon_grid_DOM01.nc"
+# icon_grid = "MeteoSwiss/icon_grid_0002_R19B07_mch.nc" # 2km
+# # icon_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc" # 1km
+# # icon_grid = "MeteoSwiss/icon_grid_00005_R19B09_DOM02.nc" # 500m
+# ds = xr.open_dataset(path_ige + icon_grid)
+# vlon_parent = np.rad2deg(ds["vlon"].values)
+# vlat_parent = np.rad2deg(ds["vlat"].values)
+# clon_parent = np.rad2deg(ds["clon"].values)
+# clat_parent = np.rad2deg(ds["clat"].values)
+# if clon_parent.size != num_cell_parent:
+#     raise ValueError("Inconsistent data loaded")
+# vertex_of_cell_parent = ds["vertex_of_cell"].values - 1
+# triangles = tri.Triangulation(vlon_parent, vlat_parent,
+#                               vertex_of_cell_parent.transpose())
+# ds.close()
 
-# Get relevant cell indices
-ind_tri_all = np.empty(len(locations), dtype=np.uint32) # parent cell indices
-tri_finder = triangles.get_trifinder()
-for ind, loc in enumerate(locations):
-    ind_tri = int(tri_finder(*loc[1]))  # type: ignore
-    ind_tri_all[ind] = ind_tri
-    print(loc[0], ind_tri, clon_parent[ind_tri], clat_parent[ind_tri])
-ind_hori_out = np.array([], dtype=np.uint32)
-for ind in ind_tri_all:
-     ind_hori_out = np.append(
-          ind_hori_out,
-          np.arange(ind * num_cell_child_per_parent,
-                    (ind + 1) * num_cell_child_per_parent, dtype=np.uint32))
-print(f"Size of 'ind_hori_out': {ind_hori_out.size}")
+# # Get relevant cell indices
+# ind_tri_all = np.empty(len(locations), dtype=np.uint32) # parent cell indices
+# tri_finder = triangles.get_trifinder()
+# for ind, loc in enumerate(locations):
+#     ind_tri = int(tri_finder(*loc[1]))  # type: ignore
+#     ind_tri_all[ind] = ind_tri
+#     print(loc[0], ind_tri, clon_parent[ind_tri], clat_parent[ind_tri])
+# ind_hori_out = np.array([], dtype=np.uint32)
+# for ind in ind_tri_all:
+#      ind_hori_out = np.append(
+#           ind_hori_out,
+#           np.arange(ind * num_cell_child_per_parent,
+#                     (ind + 1) * num_cell_child_per_parent, dtype=np.uint32))
+# print(f"Size of 'ind_hori_out': {ind_hori_out.size}")
 
 # Dummy array
 ind_hori_out = np.array([0], dtype=np.uint32)
@@ -220,7 +220,8 @@ ind_hori_out = np.array([0], dtype=np.uint32)
 # -----------------------------------------------------------------------------
 
 # Compute f_cor
-f_cor, horizon_out, slope_out = horizon_svf_comp_py(
+f_cor, shadow_angle, terrain_normal, horizon_out, slope_out = \
+    horizon_svf_comp_py(
     vlon, vlat,
     elevation.astype(np.float64),
     faces,
@@ -239,8 +240,9 @@ ncfile.area_factor_used = str(bool(cons_area_factor))
 ncfile.createDimension(dimname="num_cell_parent", size=f_cor.shape[0])
 ncfile.createDimension(dimname="num_hori", size=f_cor.shape[1])
 ncfile.createDimension(dimname="num_elev", size=f_cor.shape[2])
-ncfile.createDimension(dimname="num_hori_out", size=horizon_out.shape[0])
+ncfile.createDimension(dimname="angles", size=3)
 ncfile.createDimension(dimname="vec_comp", size=3)
+ncfile.createDimension(dimname="num_hori_out", size=horizon_out.shape[0])
 # -----------------------------------------------------------------------------
 nc_data = ncfile.createVariable(varname="f_cor", datatype="f4",
                                 dimensions=("num_cell_parent", "num_hori",
@@ -248,6 +250,19 @@ nc_data = ncfile.createVariable(varname="f_cor", datatype="f4",
 nc_data.units = "-"
 nc_data.long_name = "SW_dir correction factor"
 nc_data[:] = f_cor
+# -----------------------------------------------------------------------------
+nc_data = ncfile.createVariable(varname="shadow_angle", datatype="f4",
+                                dimensions=("num_cell_parent", "num_hori",
+                                            "angles"))
+nc_data.units = "deg"
+nc_data.long_name = "Relevant angles for shadow casting"
+nc_data[:] = shadow_angle
+# -----------------------------------------------------------------------------
+nc_data = ncfile.createVariable(varname="terrain_normal", datatype="f4",
+                                dimensions=("num_cell_parent", "vec_comp"))
+nc_data.units = "-"
+nc_data.long_name = "Sub-grid cell average terrain normal"
+nc_data[:] = terrain_normal
 # -----------------------------------------------------------------------------
 nc_data = ncfile.createVariable(varname="ind_hori_out", datatype="i4",
                                 dimensions=("num_hori_out"))

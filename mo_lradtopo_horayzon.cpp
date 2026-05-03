@@ -148,14 +148,25 @@ int element_index(unsigned int element, unsigned int* array, int array_len){
  * @brief Computes the linear index from subscripts (3D-array)
  * @param dim_1 second dimension length of the array
  * @param dim_2 third dimension length of the array
- * @param ind_0 first array indices
- * @param ind_1 second array indices
- * @param ind_2 third array indices
+ * @param ind_0 first array index
+ * @param ind_1 second array index
+ * @param ind_2 third array index
  * @return Linear index.
  */
 inline size_t lin_ind_3d(size_t dim_1, size_t dim_2, size_t ind_0,
     size_t ind_1, size_t ind_2) {
 	return (ind_0 * (dim_1 * dim_2) + ind_1 * dim_2 + ind_2);
+}
+
+/**
+ * @brief Computes the linear index from subscripts (2D-array)
+ * @param dim_1 second dimension length of the array
+ * @param ind_0 first array index
+ * @param ind_1 second array index
+ * @return Linear index.
+ */
+inline size_t lin_ind_2d(size_t dim_1, size_t ind_0, size_t ind_1) {
+    return ind_0 * dim_1 + ind_1;
 }
 
 /**
@@ -528,6 +539,15 @@ void horizon_svf_comp(double* vlon, double* vlat,
     // for (size_t i = 0; i < (size_t)num_cell_parent; i++){ // serial
     for (size_t i=r.begin(); i<r.end(); ++i) {  // parallel
 
+        size_t ind_tn_0 = lin_ind_2d(3, i, 0);
+        double num_cell_inv = 1.0 / (double)num_cell_child_per_parent;
+        size_t num_elem = (size_t)(azim_num * num_elev
+            * num_cell_child_per_parent);
+        uint8_t* shadow = new uint8_t[num_elem];
+        for (size_t i = 0; i < num_elem; ++i) {
+            shadow[i] = 1; // initially: all in shadow
+        }
+
         // Loop through child cells
          for (size_t j = 0; j < (size_t)num_cell_child_per_parent; j++){
 
@@ -680,6 +700,9 @@ void horizon_svf_comp(double* vlon, double* vlat,
                     }
                     double dot_prod_hs = dot_product(sun_dir, sphere_normal);
                     double mask_shadow = double(elev_ang > horizon_cell[k]);
+                    size_t ind_shadow = lin_ind_3d(
+                        num_elev, num_cell_child_per_parent, k, m + 1, j);
+                    shadow[ind_shadow] = uint8_t(elev_ang <= horizon_cell[k]);
                     double sw_dir_cor = (1.0 / dot_prod_hs) * area_factor *
                         mask_shadow * dot_prod_ts;
                     size_t ind_hori = lin_ind_3d(azim_num, num_elev,
@@ -697,6 +720,23 @@ void horizon_svf_comp(double* vlon, double* vlat,
 
             delete[] horizon_cell;
 
+            // Add sub-grid triangle normal (in local ENU coordinates) to
+            // output array
+            geom_vector east_direction = cross_product(north_direction,
+                                                        sphere_normal);
+            double x = east_direction.x * triangle_normal.x
+                    +  east_direction.y * triangle_normal.y
+                    +  east_direction.z * triangle_normal.z;
+            double y = north_direction.x * triangle_normal.x
+                    +  north_direction.y * triangle_normal.y
+                    +  north_direction.z * triangle_normal.z;
+            double z = sphere_normal.x * triangle_normal.x
+                    +  sphere_normal.y * triangle_normal.y
+                    +  sphere_normal.z * triangle_normal.z;
+            terrain_normal[ind_tn_0 + 0] += x * num_cell_inv;
+            terrain_normal[ind_tn_0 + 1] += y * num_cell_inv;
+            terrain_normal[ind_tn_0 + 2] += z * num_cell_inv;
+
         }
 
         // Compute average SW correction factor for parent cell
@@ -708,6 +748,43 @@ void horizon_svf_comp(double* vlon, double* vlat,
 
             }
         }
+
+        // Compute relevant elevation angles for shadow
+        int num_cell_half = int(num_cell_child_per_parent / 2);
+        for (int k = 0; k < azim_num; k++){
+            bool angle_0 = false;
+            bool angle_1 = false;
+            for (int m = 0; m < num_elev; m++){
+                int shadow_sum = 0;
+                size_t ind_shadow_0 = lin_ind_3d(num_elev,
+                    num_cell_child_per_parent, k, m, 0);
+                for (int n = 0; n < num_cell_child_per_parent; n++){
+                    shadow_sum += shadow[ind_shadow_0 + n];
+                }
+                if (!angle_0 && (shadow_sum < num_cell_child_per_parent)){
+                    size_t ind_sa = lin_ind_3d(azim_num, 3, i, k, 0);
+                    shadow_angle[ind_sa] = rad2deg(elev_spac
+                        * (double)(m - 1));
+                    // last elevation angle with full shadow
+                    angle_0 = true;
+                }
+                if (!angle_1 && (shadow_sum < num_cell_half)){
+                    size_t ind_sa = lin_ind_3d(azim_num, 3, i, k, 1);
+                    shadow_angle[ind_sa] = rad2deg(elev_spac * (double)m);
+                    // first elevation angle for which majority of cells is
+                    // illuminated
+                    angle_1 = true;
+                }
+                if (shadow_sum == 0){
+                    size_t ind_sa = lin_ind_3d(azim_num, 3, i, k, 2);
+                    shadow_angle[ind_sa] = rad2deg(elev_spac * (double)m);
+                    // first elevation angle with full illumination
+                    break;
+                }
+            }
+        }
+
+        delete[] shadow;
 
     }
 
