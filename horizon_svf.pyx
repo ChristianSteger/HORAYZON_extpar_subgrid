@@ -7,6 +7,8 @@ cdef extern from "mo_lradtopo_horayzon.h":
                           np.npy_uint32* faces,
                           np.npy_uint32* ind_hori_out,
                           float* f_cor,
+                          float* shadow_angle,
+                          float* terrain_normal,
                           double* horizon_out,
                           double* slope_out,
                           int num_vertex, int num_cell,
@@ -70,6 +72,13 @@ def horizon_svf_comp_py(np.ndarray[np.float64_t, ndim = 1] vlon,
     f_cor : ndarray of float
         Array with SW_dir correction factors
         (num_cell_parent, num_hori, num_elev) [-]
+    shadow_angle : ndarray of float
+        Array with elevation angles for sub-grid shadow casting: 0: all cells
+        in shadow, 1: half of the cells in shadow, 2: no cells in shadow
+        (num_cell_parent, num_hori, 3) [deg]
+    terrain_normal : ndarray of float
+        Array with averaged surface normal vectors of sub-grid cells
+        (num_cell_parent, 3) [-]
     horizon_out: ndarray of double
         Array with terrain horizon for selected cells (num_hori_out, num_hori)
         [deg]
@@ -111,6 +120,12 @@ def horizon_svf_comp_py(np.ndarray[np.float64_t, ndim = 1] vlon,
     cdef np.ndarray[np.float32_t, ndim = 3, mode = "c"] \
         f_cor = np.zeros((num_cell_parent, num_hori, num_elev),
         dtype=np.float32)
+    cdef np.ndarray[np.float32_t, ndim = 3, mode = "c"] \
+        shadow_angle = np.zeros((num_cell_parent, num_hori, 3),
+        dtype=np.float32)
+    cdef np.ndarray[np.float32_t, ndim = 2, mode = "c"] \
+        terrain_normal = np.zeros((num_cell_parent, 3),
+        dtype=np.float32)
     cdef np.ndarray[np.float64_t, ndim = 2, mode = "c"] \
         horizon_out = np.empty((ind_hori_out.size, num_hori), dtype=np.float64)
     cdef np.ndarray[np.float64_t, ndim = 2, mode = "c"] \
@@ -125,6 +140,8 @@ def horizon_svf_comp_py(np.ndarray[np.float64_t, ndim = 1] vlon,
                      &faces[0, 0],
                      &ind_hori_out[0],
                      &f_cor[0, 0, 0],
+                     &shadow_angle[0, 0, 0],
+                     &terrain_normal[0, 0],
                      &horizon_out[0, 0],
                      &slope_out[0, 0],
                      vlon.size, faces.shape[0],
@@ -134,4 +151,4 @@ def horizon_svf_comp_py(np.ndarray[np.float64_t, ndim = 1] vlon,
                      ray_org_elev, num_elev,
                      sw_dir_cor_max, cons_area_factor)
 
-    return f_cor, horizon_out, slope_out
+    return f_cor, shadow_angle, terrain_normal, horizon_out, slope_out
