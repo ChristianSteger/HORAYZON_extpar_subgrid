@@ -43,7 +43,8 @@ file_mesh = f"ICON_refined_mesh_mch_{icon_res}.nc"
 ds = xr.open_dataset(path_in_out + file_mesh)
 num_cell_child_per_parent =  int(ds["num_cell_child_per_parent"].values)
 ds.close()
-file_fcor = f"SW_dir_cor_mch_{icon_res}.nc"
+# file_fcor = f"SW_dir_cor_mch_{icon_res}.nc" ###################################### temporary
+file_fcor = "SW_dir_cor_mch_1km_27_stat.nc"
 ds = xr.open_dataset(path_in_out + file_fcor)
 ind_child = ds["ind_hori_out"].values # index_cell_child
 ds.close()
@@ -65,8 +66,110 @@ with open(file_json, "r") as f:
 # 14 Calancatal_1 --------------------------------------------------- favourite
 # 23 Lauterbrunnen_1
 # 24 Kandertal_S_fac
-ind_loc = 14
+ind_loc = 1
 ind_parent_sel = ind_parent[ind_loc]
+
+###############################################################################
+# New stuff
+###############################################################################
+
+# Load MCH 1km grid
+file_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc"
+ds = xr.open_dataset(path_ige + file_grid)
+clon = np.rad2deg(ds["clon"].values[ind_parent_sel]) # [deg]
+clat = np.rad2deg(ds["clat"].values[ind_parent_sel]) # [deg]
+ds.close()
+print(clat, clon)
+
+# Get f_cor for location
+ds = xr.open_dataset(path_in_out + file_fcor)
+f_cor_arr = ds["f_cor"][ind_parent_sel, :, :].values
+ds.close()
+
+# Get child terrain normal vectors
+ds = xr.open_dataset(path_in_out + file_fcor)
+slic = slice(num_cell_child_per_parent * ind_loc, 
+             num_cell_child_per_parent * (ind_loc + 1))
+tri_norms = ds["slope"][slic, :].values
+horizon = ds["horizon"][slic, :].values
+ds.close()
+
+# Terrain average normal vector
+tri_norm_av = tri_norms.sum(axis=0) / tri_norms[:, -1].sum() # not a unit vector!!!
+
+# Grid scale terrain properties
+file = "/scratch/mch/csteger/alpine_twin/tst/exp/10/wd/24081000_10/lm_coarse/000/lfff00000000c.nc"
+ds = xr.open_dataset(file)
+slope_angle = ds["slope_angle"][ind_parent_sel].values # [rad]
+slope_azimuth = ds["slope_azimuth"][ind_parent_sel].values + np.pi # [rad] (measured from south clockwise)
+ds.close()
+file = "/scratch/mch/csteger/ExtPar/output/HORAYZON_extpar/topography_i1_horayzon.nc"
+ds = xr.open_dataset(file)
+hori_gs =  ds["HORIZON"][:, ind_parent_sel].values # [deg]
+ds.close()
+
+# Local horizontal normal
+h = np.array([0.0, 0.0, 1.0])
+
+elev_ang = np.arange(0, 91, 1)
+azim_ang = np.arange(0, 360, 15)
+f_cor_new = np.empty(91)
+f_cor_new_shadow = np.empty(91)
+f_cor_gs = np.empty(91)
+f_cor_gs_shadow = np.empty(91)
+
+ind_azim = 12 # [0, 23]
+
+q = np.array([5, 50, 95])
+hori_per = np.percentile(horizon[:, ind_azim], q=q)
+
+for i in range(91):
+
+    # Sun position
+    azim = np.deg2rad(azim_ang[ind_azim])
+    elev = np.deg2rad(elev_ang[i])
+    x = np.cos(elev) * np.sin(azim)
+    y = np.cos(elev) * np.cos(azim)
+    z = np.sin(elev)
+    sun_dir = np.array([x, y, z])
+
+    mask_shadow = np.interp(np.rad2deg(elev), hori_per, q) / 100.0
+    if mask_shadow <= 0.06:
+        mask_shadow = 0.0
+    if mask_shadow >= 0.94:
+        mask_shadow = 1.0
+
+    f_cor_new[i] = 1.0 / np.dot(h, sun_dir) * np.dot(sun_dir, tri_norm_av)
+    f_cor_new_shadow[i] = 1.0 / np.dot(h, sun_dir) * np.dot(sun_dir, tri_norm_av) * mask_shadow
+
+    # Grid scale
+    x = np.sin(slope_angle) * np.sin(slope_azimuth)
+    y = np.sin(slope_angle) * np.cos(slope_azimuth)
+    z = np.cos(slope_angle)
+    tri_norm_gs = np.array([x, y, z])
+
+    f_cor_gs[i] = 1.0 / np.dot(h, sun_dir) * np.dot(sun_dir, tri_norm_gs) * 1.0 / np.cos(slope_angle)
+    mask_shadow = 1.0
+    if hori_gs[ind_azim] > elev_ang[i]:
+        mask_shadow = 0.0
+    f_cor_gs_shadow[i] = 1.0 / np.dot(h, sun_dir) * np.dot(sun_dir, tri_norm_gs) * 1.0 / np.cos(slope_angle) * mask_shadow
+
+
+# Test plot
+plt.figure()
+plt.plot(elev_ang, f_cor_arr[ind_azim, :], color="black", lw=5.0, alpha=0.5)
+plt.plot(elev_ang, f_cor_new, color="red", ls="-")
+plt.plot(elev_ang, f_cor_new_shadow, color="red", ls="--")
+plt.plot(elev_ang, f_cor_gs, color="blue", ls="-")
+plt.plot(elev_ang, f_cor_gs_shadow, color="blue", ls="--")
+plt.axis((0.0, 90.0, 0.0, 2.5))
+plt.show()
+
+
+
+###############################################################################
+# Old stuff
+###############################################################################
 
 # -----------------------------------------------------------------------------
 # Uncorrected and grid-scale corrected SW_dir

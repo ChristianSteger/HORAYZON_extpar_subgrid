@@ -240,7 +240,8 @@ def dev_bins_eta_global(f_cor_dense, elev_dense, f_cor_sparse,
                 f_cor_diff = np.abs(f_cor_ip
                                     - f_cor_dense[ind_loc, ind_azim, :])
                 deviations = f_cor_diff * sol_ang_sin * rad_zenith
-                indices = np.floor(deviations * scaling).astype(np.int64)[0:71]
+                indices = np.floor(deviations * scaling).astype(np.int64)
+                # indices = np.floor(deviations * scaling).astype(np.int64)[0:71]
                 # -> only consider elevation angles up to 70 degrees
                 for ind in indices:
                     if (ind >= 0) and (ind < bin_size):
@@ -279,7 +280,8 @@ def dev_bins_eta_local(f_cor_dense, elev_dense, f_cor_sparse,
                 f_cor_diff = np.abs(f_cor_ip
                                     - f_cor_dense[ind_loc, ind_azim, :])
                 deviations = f_cor_diff * sol_ang_sin * rad_zenith
-                indices = np.floor(deviations * scaling).astype(np.int64)[0:71]
+                indices = np.floor(deviations * scaling).astype(np.int64)
+                # indices = np.floor(deviations * scaling).astype(np.int64)[0:71]
                 # -> only consider elevation angles up to 70 degrees
                 for ind in indices:
                     if (ind >= 0) and (ind < bin_size):

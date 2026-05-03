@@ -25,8 +25,8 @@ path_in_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
 # path_in_out = "/Users/csteger/Desktop/"
 
 # Path to Cython/C++ functions
-# sys.path.append("/scratch/mch/csteger/HORAYZON_extpar_subgrid/")
-sys.path.append("/Users/csteger/Desktop/HORAYZON_extpar_subgrid/")
+sys.path.append("/scratch/mch/csteger/HORAYZON_extpar_subgrid/")
+# sys.path.append("/Users/csteger/Desktop/HORAYZON_extpar_subgrid/")
 from horizon_svf import horizon_svf_comp_py
 
 ###############################################################################
@@ -34,13 +34,13 @@ from horizon_svf import horizon_svf_comp_py
 ###############################################################################
 
 # Select mesh file
-icon_res = "2km"
-file_mesh = "ICON_refined_mesh_test_2km.nc"
-file_out = "SW_dir_cor_" + "test_" + icon_res + ".nc"
-
 # icon_res = "2km"
-# file_mesh = "ICON_refined_mesh_mch_2km.nc"
-# file_out = "SW_dir_cor_" + "mch_" + icon_res + ".nc"
+# file_mesh = "ICON_refined_mesh_test_2km.nc"
+# file_out = "SW_dir_cor_" + "test_" + icon_res + ".nc"
+
+icon_res = "2km"
+file_mesh = "ICON_refined_mesh_mch_2km.nc"
+file_out = "SW_dir_cor_" + "mch_" + icon_res + ".nc"
 
 # icon_res = "1km"
 # file_mesh = "ICON_refined_mesh_mch_1km.nc"
@@ -102,7 +102,7 @@ ind_hori_out = np.array([0, 1, 5, 10, 3_000, 3], dtype=np.uint32)
 # Indices of 'num_cell_child' to output terrain horizon
 num_elev = 91 # number of elevation angles for sw_dir_cor computation
 sw_dir_cor_max = 25.0 # maximum value for SW_dir correction factor
-cons_area_factor = 1 # use area factor for SW_dir correction factor
+cons_area_factor = 0 # use area factor for SW_dir correction factor ########################## temporary
 
 # -----------------------------------------------------------------------------
 # Select 'ind_hori_out' based on parent cell mesh
@@ -111,43 +111,58 @@ cons_area_factor = 1 # use area factor for SW_dir correction factor
 # -------------------------------------------------------------
 # MeteoSwiss stations and interesting locations
 # -------------------------------------------------------------
-# locations = [
-#      # ------- MeteoSwiss stations -----------
-#      ["Vicosoprano",     [9.6278,   46.353019]],
-#      ["Vals",            [9.188711, 46.627758]],
-#      ["Piotta",          [8.688039, 46.514811]],
-#      ["Cevio",           [8.603161, 46.320486]],
-#      ["Goeschenen",      [8.595364, 46.692678]],
-#      ["Grono",           [9.163758, 46.255075]],
-#      ["Glarus",          [9.066961, 47.034586]],
-#      # ---------------------------------------
-#      ["Veltlin_S_fac",   [9.730859, 46.181635]],
-#      ["Veltlin_N_fac",   [9.879585, 46.143744]],
-#      ["Kloental",        [8.992863, 47.013992]],
-#      ["Limmeren",        [8.995542, 46.858968]],
-#      ["Eiger_below",     [8.003756, 46.601543]],
-#      ["Gondo",           [8.140656, 46.196015]],
-#      ["Gondo_fort",      [8.113924, 46.195547]],
-#      ["Calancatal_1",    [9.117380, 46.259365]],
-#      ["Calancatal_2",    [9.114330, 46.301508]],
-#      ["Calancatal_3",    [9.116637, 46.445454]],
-#      ["Calancatal_4",    [9.113043, 46.469920]],
-#      ["Windgael_below",  [8.722420, 46.813696]],
-#      ["Schiben_below",   [8.960114, 46.820576]],
-#      ["Linthal",         [8.981141, 46.864608]],
-#      ["Engelhorn_below", [8.163189, 46.668290]],
-#      ["Gr_Scheidegg",    [8.101539, 46.655433]],
-#      ["Lauterbrunnen_1", [7.908836, 46.570909]],
-#     #  # --------------------------------------- only 1km and 500 m mesh!
-#      ["Kandertal_S_fac", [7.733795, 46.457283]],
-#      ["Kandertal_val",   [7.737744, 46.445441]],
-#      ["Kandertal_N_fac", [7.742341, 46.432649]],
-#     #  # --------------------------------------- only 500 m mesh!
-#     #  ["Gredetsch_E_fac", [7.924869, 46.356297]],
-#     #  ["Gredetsch_val",   [7.933481, 46.357383]],
-#     #  ["Gredetsch_W_fac", [7.940311, 46.357533]]
-#      # ---------------------------------------
-#     ]
+locations = [
+     # ------- MeteoSwiss stations -----------
+     ["Vicosoprano",     [9.6278,   46.353019]],
+     ["Vals",            [9.188711, 46.627758]],
+     ["Piotta",          [8.688039, 46.514811]],
+     ["Cevio",           [8.603161, 46.320486]],
+     ["Goeschenen",      [8.595364, 46.692678]],
+     ["Grono",           [9.163758, 46.255075]],
+     ["Glarus",          [9.066961, 47.034586]],
+     # ---------------------------------------
+     ["Veltlin_S_fac",   [9.730859, 46.181635]],
+     ["Veltlin_N_fac",   [9.879585, 46.143744]],
+     ["Kloental",        [8.992863, 47.013992]],
+     ["Limmeren",        [8.995542, 46.858968]],
+     ["Eiger_below",     [8.003756, 46.601543]],
+     ["Gondo",           [8.140656, 46.196015]],
+     ["Gondo_fort",      [8.113924, 46.195547]],
+     ["Calancatal_1",    [9.117380, 46.259365]],
+     ["Calancatal_2",    [9.114330, 46.301508]],
+     ["Calancatal_3",    [9.116637, 46.445454]],
+     ["Calancatal_4",    [9.113043, 46.469920]],
+     ["Windgael_below",  [8.722420, 46.813696]],
+     ["Schiben_below",   [8.960114, 46.820576]],
+     ["Linthal",         [8.981141, 46.864608]],
+     ["Engelhorn_below", [8.163189, 46.668290]],
+     ["Gr_Scheidegg",    [8.101539, 46.655433]],
+     ["Lauterbrunnen_1", [7.908836, 46.570909]],
+    #  # --------------------------------------- only 1km and 500 m mesh!
+     ["Kandertal_S_fac", [7.733795, 46.457283]],
+     ["Kandertal_val",   [7.737744, 46.445441]],
+     ["Kandertal_N_fac", [7.742341, 46.432649]],
+    #  # --------------------------------------- 
+     ["Oberrohrdorf",    [8.312873, 47.420988]],
+     ["Napf",            [7.935345, 47.002321]],
+     ["Zuerich",         [8.533633, 47.375246]],
+     ["Walensee",        [9.234161, 47.121523]],
+     ["Po_valley",       [9.509584, 45.426837]],
+    #  # --------------------------------------- 
+     ["Piz_Aul",         [9.124848, 46.622926]],
+     ["Zefreilahorn",    [9.065229, 46.552159]],
+     ["Rheinwaldhorn",   [9.040183, 46.493834]],
+     ["Finsteraarhorn",  [8.126588, 46.537015]],
+     ["Schreckhorn",     [8.119095, 46.589719]],
+     ["Kroenten",        [8.569259, 46.782166]],
+     ["Piz_Cengalo",     [9.602163, 46.294972]],
+     ["Piz_Bernina",     [9.908377, 46.382217]]
+    #  # --------------------------------------- only 500 m mesh!
+    #  ["Gredetsch_E_fac", [7.924869, 46.356297]],
+    #  ["Gredetsch_val",   [7.933481, 46.357383]],
+    #  ["Gredetsch_W_fac", [7.940311, 46.357533]]
+     # ---------------------------------------
+    ]
 # -------------------------------------------------------------
 # All MeteoSwiss stations
 # -------------------------------------------------------------
@@ -161,15 +176,15 @@ cons_area_factor = 1 # use area factor for SW_dir correction factor
 # locations = [[str(name), [float(lon), float(lat)]]
 #              for name, lat, lon in zip(station_names, lat_obs, lon_obs)]
 # # -------------------------------------------------------------
-# file_json = path_in_out + f"locations_sel_{icon_res}.json"
-# with open(file_json, "w") as f:
-#     json.dump(locations, f, indent=4)
+file_json = path_in_out + f"locations_sel_{icon_res}.json"
+with open(file_json, "w") as f:
+    json.dump(locations, f, indent=4)
 
 # Load data
 path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
     + "ICON_grids_EXTPAR/"
-icon_grid = "test/icon_grid_DOM01.nc"
-# icon_grid = "MeteoSwiss/icon_grid_0002_R19B07_mch.nc" # 2km
+# icon_grid = "test/icon_grid_DOM01.nc"
+icon_grid = "MeteoSwiss/icon_grid_0002_R19B07_mch.nc" # 2km
 # icon_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc" # 1km
 # icon_grid = "MeteoSwiss/icon_grid_00005_R19B09_DOM02.nc" # 500m
 ds = xr.open_dataset(path_ige + icon_grid)
@@ -184,20 +199,20 @@ triangles = tri.Triangulation(vlon_parent, vlat_parent,
                               vertex_of_cell_parent.transpose())
 ds.close()
 
-# # Get relevant cell indices
-# ind_tri_all = np.empty(len(locations), dtype=np.uint32) # parent cell indices
-# tri_finder = triangles.get_trifinder()
-# for ind, loc in enumerate(locations):
-#     ind_tri = int(tri_finder(*loc[1]))  # type: ignore
-#     ind_tri_all[ind] = ind_tri
-#     print(loc[0], ind_tri, clon_parent[ind_tri], clat_parent[ind_tri])
-# ind_hori_out = np.array([], dtype=np.uint32)
-# for ind in ind_tri_all:
-#      ind_hori_out = np.append(
-#           ind_hori_out,
-#           np.arange(ind * num_cell_child_per_parent,
-#                     (ind + 1) * num_cell_child_per_parent, dtype=np.uint32))
-# print(f"Size of 'ind_hori_out': {ind_hori_out.size}")
+# Get relevant cell indices
+ind_tri_all = np.empty(len(locations), dtype=np.uint32) # parent cell indices
+tri_finder = triangles.get_trifinder()
+for ind, loc in enumerate(locations):
+    ind_tri = int(tri_finder(*loc[1]))  # type: ignore
+    ind_tri_all[ind] = ind_tri
+    print(loc[0], ind_tri, clon_parent[ind_tri], clat_parent[ind_tri])
+ind_hori_out = np.array([], dtype=np.uint32)
+for ind in ind_tri_all:
+     ind_hori_out = np.append(
+          ind_hori_out,
+          np.arange(ind * num_cell_child_per_parent,
+                    (ind + 1) * num_cell_child_per_parent, dtype=np.uint32))
+print(f"Size of 'ind_hori_out': {ind_hori_out.size}")
 
 # Dummy array
 ind_hori_out = np.array([0], dtype=np.uint32)
@@ -218,6 +233,7 @@ f_cor, horizon_out, slope_out = horizon_svf_comp_py(
 # Save SW_dir correction factors to NetCDF file
 t_beg = perf_counter()
 ncfile = Dataset(filename=path_in_out + file_out, mode="w", format="NETCDF4")
+# ncfile = Dataset(filename=path_in_out + "SW_dir_cor_mch_1km_27_stat.nc", mode="w", format="NETCDF4")
 ncfile.dem_source = dem_name
 ncfile.area_factor_used = str(bool(cons_area_factor))
 ncfile.createDimension(dimname="num_cell_parent", size=f_cor.shape[0])

@@ -1,6 +1,6 @@
 # Description: Compress f_cor data for EXTPAR file.
 #
-# Author: Christian R. Steger, September 2025
+# Author: Christian R. Steger, January 2026
 
 from time import perf_counter
 
@@ -11,10 +11,10 @@ from matplotlib import style
 import matplotlib as mpl
 
 from functions.fcor_processing import spacing_exp, spacing_exp_interp
-from functions.fcor_processing import fcor_sparse_eta_const
-from functions.fcor_processing import fcor_sparse_eta_opt
-from functions.fcor_processing import dev_bins_eta_const
-from functions.fcor_processing import dev_bins_eta_opt
+from functions.fcor_processing import fcor_sparse_eta_global
+from functions.fcor_processing import fcor_sparse_eta_local
+from functions.fcor_processing import dev_bins_eta_global
+from functions.fcor_processing import dev_bins_eta_local
 
 style.use("classic")
 
@@ -33,9 +33,19 @@ path_plot = "/scratch/mch/csteger/HORAYZON_extpar_subgrid/plots/"
 ###############################################################################
 
 # Settings
+# ------------ 2km ------------
 # icon_res = "2km"
+# path_extpar = "/scratch/mch/csteger/ICON-CH2-EPS_copy_inn/"
+# file = "external_parameter_icon_grid_0002_R19B07_mch_tuned.nc"
+# ------------ 1km ------------
 icon_res = "1km"
+path_extpar = "/scratch/mch/csteger/ICON-CH1-EPS_copy_inn/"
+file = "external_parameter_icon_grid_0001_R19B08_mch_tuned.nc"
+# ------------ 500m -----------
 # icon_res = "500m"
+# path_extpar = "/store_new/mch/msopr/glori/glori-ch500-nested/grid/"
+# file = "extpar_icon_grid_00005_R19B09_DOM02.nc"
+# -----------------------------
 
 # Load data
 file_in = f"SW_dir_cor_mch_{icon_res}.nc"
@@ -50,7 +60,7 @@ print(f"Open NetCDF file: {t_end - t_beg:.1f} s")
 print(f"Maximal f-cor-value: {f_cor_dense.max():.2f}")
 f_cor_dense = f_cor_dense.clip(max=10.0) # set upper limit for f_cor
 if ((f_cor_dense.min() < 0.0) or (not np.all(f_cor_dense[:, :, 0] == 0.0))
-    or (np.abs(f_cor_dense[:, :, -1] - 1.0).max() > 1e-8)):
+    or (np.abs(f_cor_dense[:, :, -1] - 1.0).max() > 1e-2)):
     raise ValueError("Unexpected values in 'f_cor'")
 
 # Azimuth and elevation angles
@@ -59,8 +69,9 @@ if f_cor_dense.shape[2] != elev_dense.size:
     raise ValueError("Inconsistency between 'f_cor' and 'elev_ang' size")
 
 # Settings
-eta_range_const = np.array([1.0, 1.8, 1.9, 2.0, 2.1, 2.2, 2.3, 2.4, 3.0, 4.0],
-                           dtype=np.float32)
+# eta_range_const = np.array([1.0, 1.8, 1.9, 2.0, 2.1, 2.2, 2.3, 2.4, 3.0, 4.0],
+#                            dtype=np.float32)
+eta_range_const = np.arange(1.0, 4.5, 0.5, dtype=np.float32)
 eta_range_opt = np.arange(1.5, 3.6, 0.1, dtype=np.float32)
 num_elem = 8 # number of array elements (incl. elev. angle and optional eta)
 bin_size = 1_000_000
@@ -74,46 +85,45 @@ rad_zenith = 900.0 # rather lower end because direct beam radiation at
 
 # Find globally optimal exponent 'eta'
 t_beg = perf_counter()
-cdf_exp_global = []
+cdf_global = []
 for eta in eta_range_const:
-    f_cor_sparse = fcor_sparse_eta_const(f_cor_dense, elev_dense, num_elem,
-                                         eta)
-    bin_counts = dev_bins_eta_const(f_cor_dense, elev_dense, f_cor_sparse,
-                                       num_elem, eta, rad_zenith, bin_size,
-                                       scaling)
+    f_cor_sparse = fcor_sparse_eta_global(f_cor_dense, elev_dense, num_elem,
+                                          eta)
+    bin_counts = dev_bins_eta_global(f_cor_dense, elev_dense, f_cor_sparse,
+                                     num_elem, eta, rad_zenith, bin_size,
+                                     scaling)
     shp = np.array(f_cor_dense.shape)
-    shp[2] = elev_dense[0:71].size
+    # shp[2] = elev_dense[0:71].size
     # -> only consider elevation angles up to 70 degrees
     if bin_counts.sum() != np.prod(shp):
         raise ValueError("'bin_size' was chosen too small")
-    bin_edges = np.linspace(0.0, bin_size / scaling, bin_size + 1)
     cum_dist_func = np.cumsum(bin_counts) / bin_counts.sum()
-    cdf_exp_global.append(cum_dist_func)
+    cdf_global.append(cum_dist_func)
 t_end = perf_counter()
 print(f"Find global optimum exponent: {t_end - t_beg:.1f} s")
 
 # Find locally optimal exponent 'eta'
-f_cor_sparse_local = fcor_sparse_eta_opt(f_cor_dense, elev_dense, num_elem,
-                                         eta_range_opt, rad_zenith)
-bin_counts = dev_bins_eta_opt(f_cor_dense, elev_dense, f_cor_sparse_local,
-                              num_elem, rad_zenith, bin_size, scaling)
+f_cor_sparse_local = fcor_sparse_eta_local(f_cor_dense, elev_dense, num_elem,
+                                           eta_range_opt, rad_zenith)
+bin_counts = dev_bins_eta_local(f_cor_dense, elev_dense, f_cor_sparse_local,
+                                num_elem, rad_zenith, bin_size, scaling)
 cdf_local = np.cumsum(bin_counts) / bin_counts.sum()
 
-# Colors for lines
+# Plot
+bin_edges = np.linspace(0.0, bin_size / scaling, bin_size + 1)
 cmap = plt.get_cmap("turbo")
-colors = [cmap(i) for i in np.linspace(0, 1, len(cdf_exp_global))]
-
+colors = [cmap(i) for i in np.linspace(0, 1, len(cdf_global))]
 q = np.array([50.0, 90.0, 95.0, 99.0, 99.9, 99.99, 99.999])
 plt.figure()
 with np.printoptions(precision=3, suppress=True):
     print("qs:", q)
-# Global ----------------------------------------------------------------------
-for ind_i, i in enumerate(cdf_exp_global):
+# ------------------------------ global eta  ----------------------------------
+for ind_i, i in enumerate(cdf_global):
     plt.plot(bin_edges[1:], i * 100.0, lw=1.5, color=colors[ind_i],
              label=rf"$\eta$ = {eta_range_const[ind_i]:.1f}")
     with np.printoptions(precision=2, suppress=True):
         print(eta_range_const[ind_i], np.interp(q / 100.0, i, bin_edges[1:]))
-# Local -----------------------------------------------------------------------
+# ------------------------------- local eta  ----------------------------------
 plt.plot(bin_edges[1:], cdf_local * 100.0, lw=2.5, color="black", ls="--",
          label=r"local $\eta$")
 with np.printoptions(precision=2, suppress=True):
@@ -128,47 +138,55 @@ plt.xlabel(r"Absolute deviation [W m$^{-2}$]")
 plt.ylabel("Cumulative distribution function [%]")
 plt.legend(frameon=False, fontsize=10, loc="lower right", ncol=2)
 # plt.show()
-plt.savefig(path_plot + "f_cor_optimal_exp.jpg", dpi=300, bbox_inches="tight")
+plt.savefig(path_plot + f"f_cor_exp_{icon_res}.jpg", 
+            dpi=300, bbox_inches="tight")
 plt.close()
 
 # Compute 'f_cor_sparse' with globally optimal exponent 'eta'
-eta_global = 2.1
-f_cor_sparse_global = fcor_sparse_eta_const(f_cor_dense, elev_dense, num_elem,
-                                            eta_global)
+eta_global = 2.0 # -> set hard-coded value in ICON code accordingly
+f_cor_sparse_global = fcor_sparse_eta_global(f_cor_dense, elev_dense, num_elem,
+                                             eta_global)
+
+# Save 'f_cor' data as numpy array
+np.save(path_in_out + f"f_cor_sparse_global_{icon_res}.npy", 
+        f_cor_sparse_global)
 
 ###############################################################################
 # Check f_cor for specific locations
 ###############################################################################
 
+# -------------- 1km data -----------------
 # ind_loc, ind_azim = 750_000, 13
 # ind_loc, ind_azim = 790_610, 5
 ind_loc, ind_azim = 777125, 11 # total shadow until ca. ~25 deg
 # ind_loc, ind_azim = 680_000, 0 # always below 1.0
 # ind_loc, ind_azim = 580_000, 0  # up to 6.0
+# -------------- 2km data -----------------
+# ind_loc, ind_azim = 100_000, 0  # 2km
+# -----------------------------------------
 
+# Plot
 plt.figure()
 plt.plot(elev_dense, f_cor_dense[ind_loc, ind_azim, :], color="black", lw=1.5)
 # -----------------------------------------------------------------------------
 elev_start = f_cor_sparse_global[ind_loc, ind_azim, 0]
 elev_end = 90.0
 elev_sparse = spacing_exp(elev_start, elev_end, num_elem - 1, eta_global)
-plt.plot(elev_sparse, f_cor_sparse_global[ind_loc, ind_azim, 1:], color="red",
+plt.plot(elev_sparse, f_cor_sparse_global[ind_loc, ind_azim, 1:], color="green",
          lw=1.5)
 plt.scatter(elev_sparse, f_cor_sparse_global[ind_loc, ind_azim, 1:],
-            color="red", s=80)
+            color="green", s=80)
 # -----------------------------------------------------------------------------
 eta_loc = f_cor_sparse_local[ind_loc, ind_azim, 0]
 elev_start = f_cor_sparse_local[ind_loc, ind_azim, 1]
 elev_end = 90.0
 elev_sparse = spacing_exp(elev_start, elev_end, num_elem - 2, eta_loc)
-plt.plot(elev_sparse, f_cor_sparse_local[ind_loc, ind_azim, 2:], color="blue",
-         lw=1.5)
+plt.plot(elev_sparse, f_cor_sparse_local[ind_loc, ind_azim, 2:],
+         color="red", lw=1.5)
 plt.scatter(elev_sparse, f_cor_sparse_local[ind_loc, ind_azim, 2:],
-            color="blue", s=80)
+            color="red", s=80)
 # -----------------------------------------------------------------------------
 plt.show()
-# plt.savefig("test.jpg", dpi=200, bbox_inches="tight")
-# plt.close()
 
 ###############################################################################
 # Check that interpolation of f_cor from sparse data works correctly and save
@@ -216,13 +234,7 @@ f_cor_approx = spacing_exp_interp(elev_start, elev_end, num_elem - 1,
                                   eta, elev_sun, f_cor_loc)
 print(f"f_cor (approx) = {f_cor_approx:.2f}")
 
-# Save 'f_cor' data as numpy array
-np.save(path_in_out + f"f_cor_sparse_{icon_res}.npy", f_cor_sparse)
-
 # Save to EXTPAR NetCDF file (write 'f_cor' to 'HORIZON' field)
-path_extpar = "/scratch/mch/csteger/ICON-CH1-EPS_copy/"
-# file = "external_parameter_icon_grid_0001_R19B08_mch_tuned.nc"
-file = "extpar_icon_grid_0001_R19B08_mch_copernicus_ray.nc"
 t_beg = perf_counter()
 ds = xr.open_dataset(path_extpar + file)
 ds = ds.drop_vars("HORIZON")
