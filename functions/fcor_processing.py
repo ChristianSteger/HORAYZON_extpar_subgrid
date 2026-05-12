@@ -6,7 +6,7 @@ import functools
 import time
 
 import numpy as np
-from numba import njit, float32, int64
+from numba import njit, float32, int64, int32
 from numba import prange, set_num_threads, get_num_threads
 
 ###############################################################################
@@ -71,24 +71,24 @@ def spacing_exp_interp(x_start, x_end, num_nodes, eta, x_ip, y):
     pos_norm = (x_ip - x_start) / (x_end - x_start)
     if pos_norm <= 0.0:
         # -> intercept negative 'pos_norm' values -> issue for 'pos_norm ** m',
-        #    guarantees that 'ind_left' is >= 0
+        #    guarantees that 'idx_left' is >= 0
         # print("x-value out of bounds (left)")
         return 0.0
-    ind_left = int((num_nodes - 1) * pos_norm ** (1.0 / eta))
-    if ind_left >= (num_nodes - 1):
-        # -> handle values when 'ind_left' would be rightmost index or larger
+    idx_left = int((num_nodes - 1) * pos_norm ** (1.0 / eta))
+    if idx_left >= (num_nodes - 1):
+        # -> handle values when 'idx_left' would be rightmost index or larger
         # print("x-value out of bounds (right)")
         return 1.0
     x_left = x_start + (x_end - x_start) \
-        * (float(ind_left) / float(num_nodes - 1)) ** eta
+        * (float(idx_left) / float(num_nodes - 1)) ** eta
     x_right = x_start + (x_end - x_start) \
-        * (float(ind_left + 1) / float(num_nodes - 1)) ** eta
-    # print("Left index: " + str(ind_left))
+        * (float(idx_left + 1) / float(num_nodes - 1)) ** eta
+    # print("Left index: " + str(idx_left))
     # print(f"x_left: {x_left:.4f}, x_ip: {x_ip:.4f}, "
     #       + f"x_right: {x_right:.4f}")
     weight_left = (x_right - x_ip) / (x_right - x_left)
-    y_ip = y[ind_left] * weight_left \
-        + y[ind_left + 1] * (1.0 - weight_left)
+    y_ip = y[idx_left] * weight_left \
+        + y[idx_left + 1] * (1.0 - weight_left)
     return y_ip
 
 # -----------------------------------------------------------------------------
@@ -137,153 +137,133 @@ set_num_threads(8)
 print("Using", get_num_threads(), "threads")
 
 @measure_time
-@njit((float32[:, :, :])(float32[:, :, :], float32[:], int64, float32),
-      parallel=True)
-def fcor_sparse_eta_global(f_cor_dense, elev_dense, num_elem, eta):
+@njit((float32[:, :, :])(float32[:, :, :], float32[:], int32[:, :],
+                         int32[:, :], int64, float32), parallel=True)
+def compute_fcor_sparse(f_cor_dense, elev_dense, idx_elev_start, idx_elev_end,
+                        num_nodes, eta):
     """
-    Compress f_cor information using a global exponent 'eta'.
+    Compress f_cor information using the exponent 'eta'.
     """
-    f_cor_sparse = np.empty((f_cor_dense.shape[0], 24, num_elem),
+    f_cor_sparse = np.empty((f_cor_dense.shape[0], 24, num_nodes),
                             dtype=np.float32)
-    # axis 2: elevation angle and array of f_cor-values
-    for ind_loc in prange(f_cor_dense.shape[0]):
-        for ind_azim in range(24):
-            ind_start \
-                = np.where(f_cor_dense[ind_loc, ind_azim, :] == 0.0)[0][-1]
-            elev_start = elev_dense[ind_start]
-            elev_end = 90.0 # equal to elev_dense[-1]
-            elev_sparse = spacing_exp(elev_start, elev_end, num_elem - 1, eta)
-            f_cor_ip = np.interp(x=elev_sparse, xp=elev_dense,
-                                 fp=f_cor_dense[ind_loc, ind_azim, :])
-            f_cor_sparse[ind_loc, ind_azim, 0] = elev_start
-            f_cor_sparse[ind_loc, ind_azim, 1:] = f_cor_ip
+    for idx_cell in prange(f_cor_dense.shape[0]):
+        for idx_azim in range(24):
+            elev_start = elev_dense[idx_elev_start[idx_cell, idx_azim]]
+            elev_end = elev_dense[idx_elev_end[idx_cell, idx_azim]]
+            elev_sparse = spacing_exp(elev_start, elev_end, num_nodes, eta)
+            f_cor_sparse[idx_cell, idx_azim, :] \
+                = np.interp(x=elev_sparse, xp=elev_dense,
+                            fp=f_cor_dense[idx_cell, idx_azim, :])
     return f_cor_sparse
 
 @measure_time
-@njit((float32[:, :, :])(float32[:, :, :], float32[:], int64, float32[:], 
-                         float32), parallel=True)
-def fcor_sparse_eta_local(f_cor_dense, elev_dense, num_elem, eta_range,
-                          rad_zenith):
-    """
-    Compress f_cor information using an local optimal exponent 'eta'.
-    """
-    f_cor_sparse = np.empty((f_cor_dense.shape[0], 24, num_elem),
-                            dtype=np.float32)
-    # axis 2: optimal exponent, elevation angle and array of f_cor-values
-    sol_ang_sin = np.sin(np.deg2rad(elev_dense))
-    for ind_loc in prange(f_cor_dense.shape[0]):
-        for ind_azim in range(24):
-            ind_start \
-                = np.where(f_cor_dense[ind_loc, ind_azim, :] == 0.0)[0][-1]
-            elev_start = elev_dense[ind_start]
-            elev_end = 90.0 # equal to elev_dense[-1]
-            error_metric = np.zeros(eta_range.size, dtype=np.float32)
-            for ind_eta in range(eta_range.size):
-                elev_sparse = spacing_exp(elev_start, elev_end, num_elem - 2,
-                                          eta_range[ind_eta])
-                f_cor_sparse_temp = np.interp(
-                    x=elev_sparse, xp=elev_dense,
-                    fp=f_cor_dense[ind_loc, ind_azim, :])
-                f_cor_dense_rec = np.interp(elev_dense, elev_sparse,
-                                            f_cor_sparse_temp)
-                rad = f_cor_dense_rec * sol_ang_sin * rad_zenith
-                rad_ref = f_cor_dense[ind_loc, ind_azim, :] * sol_ang_sin \
-                    * rad_zenith
-                # ----- Sum of absolute difference ----------------------------
-                # error_metric[ind_eta] = np.abs(rad - rad_ref).sum()
-                # ----- Sum of squared difference -----------------------------
-                error_metric[ind_eta] = ((rad - rad_ref) ** 2).sum()
-                # -------------------------------------------------------------
-            eta_opt = eta_range[np.argmin(error_metric)]
-            elev_sparse = spacing_exp(elev_start, elev_end, num_elem - 2,
-                                      eta_opt)
-            f_cor_ip = np.interp(x=elev_sparse, xp=elev_dense,
-                                 fp=f_cor_dense[ind_loc, ind_azim, :])
-            f_cor_sparse[ind_loc, ind_azim, 0] = eta_opt
-            f_cor_sparse[ind_loc, ind_azim, 1] = elev_start
-            f_cor_sparse[ind_loc, ind_azim, 2:] = f_cor_ip
-
-    return f_cor_sparse
-
-###############################################################################
-# Compute error statistics for compressed f_cor information
-###############################################################################
-
-@measure_time
-@njit((int64[:])(float32[:, :, :], float32[:], float32[:, :, :], int64,
-                 float32, float32, int64, float32), parallel=True)
-def dev_bins_eta_global(f_cor_dense, elev_dense, f_cor_sparse,
-                        num_elem, eta, rad_zenith, bin_size, scaling):
+@njit((int64[:])(float32[:, :, :], float32[:], float32[:, :, :], int32[:, :],
+                 int32[:, :], float32[:, :], int64, float32, float32, int64,
+                 float32), parallel=True)
+def dev_bins_default(f_cor_dense, elev_dense, f_cor_sparse, idx_elev_start,
+                     idx_elev_end, terrain_normal, num_nodes, eta, rad_zenith,
+                     bin_size, scaling):
     """
     Compute binned deviations for 'f_cor_sparse' with respect to reference 
-    data ('f_cor_dense'). Parallel version.
+    data 'f_cor_dense'. Only use 'f_cor_sparse' information for recomputing
+    'f_cor' ('terrain_normal' is not used).
     """
     num_threads = get_num_threads()
     bin_counts = np.zeros((num_threads, bin_size), dtype=np.int64)
-    sol_ang_sin = np.sin(np.deg2rad(elev_dense))
+    radiation = np.sin(np.deg2rad(elev_dense)) * rad_zenith
     shape_0 = f_cor_dense.shape[0]
     chunk_size = (shape_0 + num_threads - 1) // num_threads
     for tid in prange(num_threads):
         start = tid * chunk_size
         end = min(shape_0, start + chunk_size)
-        for ind_loc in range(start, end):
-            for ind_azim in range(24):
-                elev_start = f_cor_sparse[ind_loc, ind_azim, 0]
-                elev_end = 90.0
-                elev_sparse = spacing_exp(elev_start, elev_end,
-                                          num_elem - 1, eta)
-                f_cor_ip = np.interp(elev_dense, elev_sparse,
-                                    f_cor_sparse[ind_loc, ind_azim, 1:])
+        for idx_cell in range(start, end):
+            for idx_azim in range(24):
+                elev_start = elev_dense[idx_elev_start[idx_cell, idx_azim]]
+                elev_end = elev_dense[idx_elev_end[idx_cell, idx_azim]]
+                elev_sparse = spacing_exp(elev_start, elev_end, num_nodes, eta)
+                f_cor_rec = np.interp(elev_dense, elev_sparse,
+                                     f_cor_sparse[idx_cell, idx_azim, :])
                 # -> out-of-bounds interpolation behaviour:
                 #    x < xp[0]  -> fp[0]
                 #    x > xp[-1] -> fp[-1]
-                f_cor_diff = np.abs(f_cor_ip
-                                    - f_cor_dense[ind_loc, ind_azim, :])
-                deviations = f_cor_diff * sol_ang_sin * rad_zenith
-                indices = np.floor(deviations * scaling).astype(np.int64)
-                # indices = np.floor(deviations * scaling).astype(np.int64)[0:71]
+                f_cor_dev = np.abs(f_cor_rec
+                                   - f_cor_dense[idx_cell, idx_azim, :])
+                radiation_dev = f_cor_dev * radiation
+                indices = np.floor(radiation_dev * scaling).astype(np.int64)
+                # indices = np.floor(radiation_dev * scaling).astype(np.int64)[0:71]
                 # -> only consider elevation angles up to 70 degrees
-                for ind in indices:
-                    if (ind >= 0) and (ind < bin_size):
-                        bin_counts[tid, ind] += 1
+                for idx in indices:
+                    if (idx >= 0) and (idx < bin_size):
+                        bin_counts[tid, idx] += 1
     return np.sum(bin_counts, axis=0)
 
 @measure_time
-@njit((int64[:])(float32[:, :, :], float32[:], float32[:, :, :], int64,
-                 float32, int64, float32), parallel=True)
-def dev_bins_eta_local(f_cor_dense, elev_dense, f_cor_sparse,
-                       num_elem, rad_zenith, bin_size, scaling):
+@njit((int64[:])(float32[:, :, :], float32[:], float32[:, :, :], int32[:, :],
+                 int32[:, :], float32[:, :], int64, float32, float32, int64,
+                 float32)) # parallel: , parallel=True
+def dev_bins_with_tn(f_cor_dense, elev_dense, f_cor_sparse, idx_elev_start,
+                     idx_elev_end, terrain_normal, num_nodes, eta, rad_zenith,
+                     bin_size, scaling):
     """
     Compute binned deviations for 'f_cor_sparse' with respect to reference 
-    data ('f_cor_dense'). Parallel version.
+    data 'f_cor_dense'. Use 'f_cor_sparse' and 'terrain_normal' information
+    for recomputing 'f_cor'.
     """
+    # Note: parallelised version yields incorrect results for unknown reasons
+
+    # Horizontal normal and sun vector(s)
+    h_vec = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+    s_vec = np.empty((24, 91, 3), dtype=np.float32)
+    s_vec.fill(np.nan)
+    azim = np.arange(0.0, 360.0, 15, dtype=np.float32)
+    for idx_azim in range(24):
+        for idx_elev in range(91):
+            s_vec[idx_azim, idx_elev, 0] \
+                = np.cos(np.deg2rad(elev_dense[idx_elev])) \
+                    * np.sin(np.deg2rad(azim[idx_azim]))
+            s_vec[idx_azim, idx_elev, 1] \
+                = np.cos(np.deg2rad(elev_dense[idx_elev])) \
+                    * np.cos(np.deg2rad(azim[idx_azim]))
+            s_vec[idx_azim, idx_elev, 2] \
+                = np.sin(np.deg2rad(elev_dense[idx_elev]))
+
+    # Compute binned deviations
     num_threads = get_num_threads()
     bin_counts = np.zeros((num_threads, bin_size), dtype=np.int64)
-    sol_ang_sin = np.sin(np.deg2rad(elev_dense))
+    radiation = np.sin(np.deg2rad(elev_dense)) * rad_zenith
     shape_0 = f_cor_dense.shape[0]
     chunk_size = (shape_0 + num_threads - 1) // num_threads
-    for tid in prange(num_threads):
+    for tid in range(num_threads): # parallel: prange
         start = tid * chunk_size
         end = min(shape_0, start + chunk_size)
-        for ind_loc in range(start, end):
-            for ind_azim in range(24):
-                eta = f_cor_sparse[ind_loc, ind_azim, 0]
-                elev_start = f_cor_sparse[ind_loc, ind_azim, 1]
-                elev_end = 90.0
-                elev_sparse = spacing_exp(elev_start, elev_end,
-                                          num_elem - 2, eta)
-                f_cor_ip = np.interp(elev_dense, elev_sparse,
-                                    f_cor_sparse[ind_loc, ind_azim, 2:])
-                # -> out-of-bounds interpolation behaviour:
-                #    x < xp[0]  -> fp[0]
-                #    x > xp[-1] -> fp[-1]
-                f_cor_diff = np.abs(f_cor_ip
-                                    - f_cor_dense[ind_loc, ind_azim, :])
-                deviations = f_cor_diff * sol_ang_sin * rad_zenith
-                indices = np.floor(deviations * scaling).astype(np.int64)
-                # indices = np.floor(deviations * scaling).astype(np.int64)[0:71]
+        for idx_cell in range(start, end):
+            t_vec = terrain_normal[idx_cell, :]
+            for idx_azim in range(24):
+                f_cor_rec = np.zeros(91, dtype=np.float32)
+                # ---------- Recompute from 'f_cor_sparse' --------------------
+                idx_start = idx_elev_start[idx_cell, idx_azim]
+                idx_end = idx_elev_end[idx_cell, idx_azim]
+                elev_sparse = spacing_exp(elev_dense[idx_start],
+                                          elev_dense[idx_end], num_nodes, eta)
+                f_cor_ip = np.interp(elev_dense[(idx_start + 1):idx_end],
+                                     elev_sparse,
+                                     f_cor_sparse[idx_cell, idx_azim, :])
+                f_cor_rec[(idx_start + 1):idx_end] = f_cor_ip
+                # ---------- Recompute from 'terrain normal' ------------------
+                for idx_elev in range(np.maximum(idx_end, 1), 91):
+                    # ignore case 'idx_end = 0' -> dot product in denominator
+                    # becomes 0.0 -> keep 'f_cor_rec = 0.0' for this case
+                    s_vec_sel = s_vec[idx_azim, idx_elev, :]
+                    f_cor_rec[idx_elev] = (1.0 / np.dot(s_vec_sel, h_vec)) \
+                        * np.dot(s_vec_sel, t_vec)
+                # -------------------------------------------------------------
+                f_cor_dev = np.abs(f_cor_rec
+                                   - f_cor_dense[idx_cell, idx_azim, :])
+                radiation_dev = f_cor_dev * radiation
+                indices = np.floor(radiation_dev * scaling).astype(np.int64)
+                # indices = np.floor(radiation_dev * scaling).astype(np.int64)[0:71]
                 # -> only consider elevation angles up to 70 degrees
-                for ind in indices:
-                    if (ind >= 0) and (ind < bin_size):
-                        bin_counts[tid, ind] += 1
+                for idx in indices:
+                    if (idx >= 0) and (idx < bin_size):
+                        bin_counts[tid, idx] += 1
     return np.sum(bin_counts, axis=0)

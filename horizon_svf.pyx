@@ -5,9 +5,9 @@ cdef extern from "mo_lradtopo_horayzon.h":
     void horizon_svf_comp(double* vlon, double* vlat,
                           double* elevation,
                           np.npy_uint32* faces,
-                          np.npy_uint32* ind_hori_out,
+                          np.npy_uint32* idx_hori_out,
                           float* f_cor,
-                          float* shadow_angle,
+                          np.npy_int32* shadow_angle_idx,
                           float* terrain_normal,
                           double* horizon_out,
                           double* slope_out,
@@ -23,7 +23,7 @@ def horizon_svf_comp_py(np.ndarray[np.float64_t, ndim = 1] vlon,
                         np.ndarray[np.float64_t, ndim = 1] vlat,
                         np.ndarray[np.float64_t, ndim = 1] elevation,
                         np.ndarray[np.uint32_t, ndim = 2] faces,
-                        np.ndarray[np.uint32_t, ndim = 1] ind_hori_out,
+                        np.ndarray[np.uint32_t, ndim = 1] idx_hori_out,
                         int num_cell_parent,
                         int num_cell_child_per_parent,
                         int num_hori,
@@ -47,7 +47,7 @@ def horizon_svf_comp_py(np.ndarray[np.float64_t, ndim = 1] vlon,
         Array with indices of cell vertices. Indices start with 0 and are
         contiguous in memory as (tri0_v0, tri0_v1, tri0_v2, tri1_v0, ...)
         (num_cell, 3)
-    ind_hori_out : ndarray of int
+    idx_hori_out : ndarray of int
         Array with cell indices for which the computed horizon is outputted
     num_cell_parent : int
         Number of parent cells
@@ -72,10 +72,11 @@ def horizon_svf_comp_py(np.ndarray[np.float64_t, ndim = 1] vlon,
     f_cor : ndarray of float
         Array with SW_dir correction factors
         (num_cell_parent, num_hori, num_elev) [-]
-    shadow_angle : ndarray of float
-        Array with elevation angles for sub-grid shadow casting: 0: all cells
-        in shadow, 1: half of the cells in shadow, 2: no cells in shadow
-        (num_cell_parent, num_hori, 3) [deg]
+    shadow_angle_idx : ndarray of int
+        Array with indices to elevation angles for sub-grid shadow casting:
+        0: all cells in shadow, 1: half of the cells in shadow, 2: no cells
+        in shadow
+        (num_cell_parent, num_hori, 3) [-]
     terrain_normal : ndarray of float
         Array with averaged surface normal vectors of sub-grid cells
         (num_cell_parent, 3) [-]
@@ -98,10 +99,10 @@ def horizon_svf_comp_py(np.ndarray[np.float64_t, ndim = 1] vlon,
     if faces.shape[0] != num_cell_parent * num_cell_child_per_parent:
         raise ValueError("Inconsistency between shape of 'faces' and" \
                          + "'num_cell_parent' and 'num_cell_child_per_parent'")
-    if (ind_hori_out.min() < 0) or (ind_hori_out.max() > faces.shape[0] - 1):
-        raise ValueError("Indices of 'ind_hori_out' out of range")
-    if np.unique(ind_hori_out).size != ind_hori_out.size:
-        raise ValueError("Indices of 'ind_hori_out' must be unique")
+    if (idx_hori_out.min() < 0) or (idx_hori_out.max() > faces.shape[0] - 1):
+        raise ValueError("Indices of 'idx_hori_out' out of range")
+    if np.unique(idx_hori_out).size != idx_hori_out.size:
+        raise ValueError("Indices of 'idx_hori_out' must be unique")
     if (num_hori < 4) or (num_hori > 360):
         raise ValueError("'num_hori' must be in the range [4, 360]")
     if (dist_search < 1_000.0) or (dist_search > 500_000.0):
@@ -120,16 +121,16 @@ def horizon_svf_comp_py(np.ndarray[np.float64_t, ndim = 1] vlon,
     cdef np.ndarray[np.float32_t, ndim = 3, mode = "c"] \
         f_cor = np.zeros((num_cell_parent, num_hori, num_elev),
         dtype=np.float32)
-    cdef np.ndarray[np.float32_t, ndim = 3, mode = "c"] \
-        shadow_angle = np.empty((num_cell_parent, num_hori, 3),
-        dtype=np.float32)
+    cdef np.ndarray[np.int32_t, ndim = 3, mode = "c"] \
+        shadow_angle_idx = np.empty((num_cell_parent, num_hori, 3),
+        dtype=np.int32)
     cdef np.ndarray[np.float32_t, ndim = 2, mode = "c"] \
         terrain_normal = np.zeros((num_cell_parent, 3),
         dtype=np.float32)
     cdef np.ndarray[np.float64_t, ndim = 2, mode = "c"] \
-        horizon_out = np.empty((ind_hori_out.size, num_hori), dtype=np.float64)
+        horizon_out = np.empty((idx_hori_out.size, num_hori), dtype=np.float64)
     cdef np.ndarray[np.float64_t, ndim = 2, mode = "c"] \
-        slope_out = np.empty((ind_hori_out.size, 3), dtype=np.float64)
+        slope_out = np.empty((idx_hori_out.size, 3), dtype=np.float64)
 
     # Ensure that passed (multi-dimensional) arrays are contiguous in memory
     faces = np.ascontiguousarray(faces)
@@ -138,17 +139,17 @@ def horizon_svf_comp_py(np.ndarray[np.float64_t, ndim = 1] vlon,
     horizon_svf_comp(&vlon[0], &vlat[0],
                      &elevation[0],
                      &faces[0, 0],
-                     &ind_hori_out[0],
+                     &idx_hori_out[0],
                      &f_cor[0, 0, 0],
-                     &shadow_angle[0, 0, 0],
+                     &shadow_angle_idx[0, 0, 0],
                      &terrain_normal[0, 0],
                      &horizon_out[0, 0],
                      &slope_out[0, 0],
                      vlon.size, faces.shape[0],
-                     ind_hori_out.size,
+                     idx_hori_out.size,
                      num_cell_parent, num_cell_child_per_parent,
                      num_hori, dist_search,
                      ray_org_elev, num_elev,
                      sw_dir_cor_max, cons_area_factor)
 
-    return f_cor, shadow_angle, terrain_normal, horizon_out, slope_out
+    return f_cor, shadow_angle_idx, terrain_normal, horizon_out, slope_out

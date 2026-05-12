@@ -148,25 +148,25 @@ int element_index(unsigned int element, unsigned int* array, int array_len){
  * @brief Computes the linear index from subscripts (3D-array)
  * @param dim_1 second dimension length of the array
  * @param dim_2 third dimension length of the array
- * @param ind_0 first array index
- * @param ind_1 second array index
- * @param ind_2 third array index
+ * @param idx_0 first array index
+ * @param idx_1 second array index
+ * @param idx_2 third array index
  * @return Linear index.
  */
-inline size_t lin_ind_3d(size_t dim_1, size_t dim_2, size_t ind_0,
-    size_t ind_1, size_t ind_2) {
-	return (ind_0 * (dim_1 * dim_2) + ind_1 * dim_2 + ind_2);
+inline size_t lin_idx_3d(size_t dim_1, size_t dim_2, size_t idx_0,
+    size_t idx_1, size_t idx_2) {
+	return (idx_0 * (dim_1 * dim_2) + idx_1 * dim_2 + idx_2);
 }
 
 /**
  * @brief Computes the linear index from subscripts (2D-array)
  * @param dim_1 second dimension length of the array
- * @param ind_0 first array index
- * @param ind_1 second array index
+ * @param idx_0 first array index
+ * @param idx_1 second array index
  * @return Linear index.
  */
-inline size_t lin_ind_2d(size_t dim_1, size_t ind_0, size_t ind_1) {
-    return ind_0 * dim_1 + ind_1;
+inline size_t lin_idx_2d(size_t dim_1, size_t idx_0, size_t idx_1) {
+    return idx_0 * dim_1 + idx_1;
 }
 
 /**
@@ -421,9 +421,9 @@ void terrain_horizon(float ray_org_x, float ray_org_y, float ray_org_z,
 void horizon_svf_comp(double* vlon, double* vlat,
     double* elevation,
     unsigned int* faces,
-    unsigned int* ind_hori_out,
+    unsigned int* idx_hori_out,
     float* f_cor,
-    float* shadow_angle,
+    int* shadow_angle_idx,
     float* terrain_normal,
     double* horizon_out,
     double* slope_out,
@@ -524,9 +524,9 @@ void horizon_svf_comp(double* vlon, double* vlat,
     double elev_sin_sun = sin(elev_spac);
     double elev_cos_sun = cos(elev_spac);
 
-    // Store 'ind_hori_out' in set for fast membership testing
-    std::unordered_set<unsigned int> ind_hori_out_set(ind_hori_out,
-        ind_hori_out + num_hori_out);
+    // Store 'idx_hori_out' in set for fast membership testing
+    std::unordered_set<unsigned int> idx_hori_out_set(idx_hori_out,
+        idx_hori_out + num_hori_out);
 
     auto start_ray = std::chrono::high_resolution_clock::now();
     size_t num_rays = 0;
@@ -539,7 +539,7 @@ void horizon_svf_comp(double* vlon, double* vlat,
     // for (size_t i = 0; i < (size_t)num_cell_parent; i++){ // serial
     for (size_t i=r.begin(); i<r.end(); ++i) {  // parallel
 
-        size_t ind_tn_0 = lin_ind_2d(3, i, 0);
+        size_t idx_tn_0 = lin_idx_2d(3, i, 0);
         double num_cell_inv = 1.0 / (double)num_cell_child_per_parent;
         size_t num_elem = (size_t)(azim_num * num_elev
             * num_cell_child_per_parent);
@@ -551,26 +551,26 @@ void horizon_svf_comp(double* vlon, double* vlat,
         // Loop through child cells
          for (size_t j = 0; j < (size_t)num_cell_child_per_parent; j++){
 
-            size_t ind_cell = i * (size_t)num_cell_child_per_parent + j;
-            unsigned int ind_cell_ui32b = (unsigned int)ind_cell;
+            size_t idx_cell = i * (size_t)num_cell_child_per_parent + j;
+            unsigned int idx_cell_ui32b = (unsigned int)idx_cell;
 
             // ------------------------------------------------------ temporary
-            // // setting to accelerate computation for 'ind_hori_out'
-            // if (ind_hori_out_set.find(ind_cell_ui32b) == ind_hori_out_set.end()) {
+            // // setting to accelerate computation for 'idx_hori_out'
+            // if (idx_hori_out_set.find(idx_cell_ui32b) == idx_hori_out_set.end()) {
             //     continue;
             // }
             // ------------------------------------------------------ temporary
 
             // Compute cell (triangle) centroid
-            geom_point vertex_0 = {vertices[faces[(ind_cell * 3) + 0]].x,
-                                   vertices[faces[(ind_cell * 3) + 0]].y,
-                                   vertices[faces[(ind_cell * 3) + 0]].z};
-            geom_point vertex_1 = {vertices[faces[(ind_cell * 3) + 1]].x,
-                                   vertices[faces[(ind_cell * 3) + 1]].y,
-                                   vertices[faces[(ind_cell * 3) + 1]].z};
-            geom_point vertex_2 = {vertices[faces[(ind_cell * 3) + 2]].x,
-                                   vertices[faces[(ind_cell * 3) + 2]].y,
-                                   vertices[faces[(ind_cell * 3) + 2]].z};
+            geom_point vertex_0 = {vertices[faces[(idx_cell * 3) + 0]].x,
+                                   vertices[faces[(idx_cell * 3) + 0]].y,
+                                   vertices[faces[(idx_cell * 3) + 0]].z};
+            geom_point vertex_1 = {vertices[faces[(idx_cell * 3) + 1]].x,
+                                   vertices[faces[(idx_cell * 3) + 1]].y,
+                                   vertices[faces[(idx_cell * 3) + 1]].z};
+            geom_point vertex_2 = {vertices[faces[(idx_cell * 3) + 2]].x,
+                                   vertices[faces[(idx_cell * 3) + 2]].y,
+                                   vertices[faces[(idx_cell * 3) + 2]].z};
             geom_point cell_centroid = {
                 (vertex_0.x + vertex_1.x + vertex_2.x) / 3.0,
                 (vertex_0.y + vertex_1.y + vertex_2.y) / 3.0,
@@ -632,9 +632,9 @@ void horizon_svf_comp(double* vlon, double* vlat,
 
             // Store horizon and average slope angle/aspect for specified cells
             // in output array
-            if (ind_hori_out_set.find(ind_cell_ui32b)
-                != ind_hori_out_set.end()) {
-                int index = element_index(ind_cell_ui32b, ind_hori_out,
+            if (idx_hori_out_set.find(idx_cell_ui32b)
+                != idx_hori_out_set.end()) {
+                int index = element_index(idx_cell_ui32b, idx_hori_out,
                     num_hori_out);
                 for (int k = 0; k < azim_num; k++){
                     horizon_out[index * azim_num + k]
@@ -700,14 +700,14 @@ void horizon_svf_comp(double* vlon, double* vlat,
                     }
                     double dot_prod_hs = dot_product(sun_dir, sphere_normal);
                     double mask_shadow = double(elev_ang > horizon_cell[k]);
-                    size_t ind_shadow = lin_ind_3d(
+                    size_t idx_shadow = lin_idx_3d(
                         num_elev, num_cell_child_per_parent, k, m + 1, j);
-                    shadow[ind_shadow] = uint8_t(elev_ang <= horizon_cell[k]);
+                    shadow[idx_shadow] = uint8_t(elev_ang <= horizon_cell[k]);
                     double sw_dir_cor = (1.0 / dot_prod_hs) * area_factor *
                         mask_shadow * dot_prod_ts;
-                    size_t ind_hori = lin_ind_3d(azim_num, num_elev,
+                    size_t idx_hori = lin_idx_3d(azim_num, num_elev,
                                                  i, k, m + 1);
-                    f_cor[ind_hori] += std::min(sw_dir_cor, sw_dir_cor_max);
+                    f_cor[idx_hori] += std::min(sw_dir_cor, sw_dir_cor_max);
                 }
 
             // Azimuthal rotation of ray direction (clockwise; first to east)
@@ -733,18 +733,18 @@ void horizon_svf_comp(double* vlon, double* vlat,
             double z = sphere_normal.x * triangle_normal.x
                     +  sphere_normal.y * triangle_normal.y
                     +  sphere_normal.z * triangle_normal.z;
-            terrain_normal[ind_tn_0 + 0] += x * num_cell_inv;
-            terrain_normal[ind_tn_0 + 1] += y * num_cell_inv;
-            terrain_normal[ind_tn_0 + 2] += z * num_cell_inv;
+            terrain_normal[idx_tn_0 + 0] += x * num_cell_inv;
+            terrain_normal[idx_tn_0 + 1] += y * num_cell_inv;
+            terrain_normal[idx_tn_0 + 2] += z * num_cell_inv;
 
         }
 
         // Compute average SW correction factor for parent cell
         for (int k = 0; k < azim_num; k++){
             for (int m = 0; m < num_elev; m++){
-                size_t ind_hori = lin_ind_3d(azim_num, num_elev,
+                size_t idx_hori = lin_idx_3d(azim_num, num_elev,
                                              i, k, m);
-                f_cor[ind_hori] /= (float)num_cell_child_per_parent;
+                f_cor[idx_hori] /= (float)num_cell_child_per_parent;
 
             }
         }
@@ -756,28 +756,27 @@ void horizon_svf_comp(double* vlon, double* vlat,
             bool angle_1 = false;
             for (int m = 0; m < num_elev; m++){
                 int shadow_sum = 0;
-                size_t ind_shadow_0 = lin_ind_3d(num_elev,
+                size_t idx_shadow_0 = lin_idx_3d(num_elev,
                     num_cell_child_per_parent, k, m, 0);
                 for (int n = 0; n < num_cell_child_per_parent; n++){
-                    shadow_sum += shadow[ind_shadow_0 + n];
+                    shadow_sum += shadow[idx_shadow_0 + n];
                 }
                 if (!angle_0 && (shadow_sum < num_cell_child_per_parent)){
-                    size_t ind_sa = lin_ind_3d(azim_num, 3, i, k, 0);
-                    shadow_angle[ind_sa] = rad2deg(elev_spac
-                        * (double)(m - 1));
+                    size_t idx_sa = lin_idx_3d(azim_num, 3, i, k, 0);
+                    shadow_angle_idx[idx_sa] = m - 1;
                     // last elevation angle with full shadow
                     angle_0 = true;
                 }
                 if (!angle_1 && (shadow_sum < num_cell_half)){
-                    size_t ind_sa = lin_ind_3d(azim_num, 3, i, k, 1);
-                    shadow_angle[ind_sa] = rad2deg(elev_spac * (double)m);
+                    size_t idx_sa = lin_idx_3d(azim_num, 3, i, k, 1);
+                    shadow_angle_idx[idx_sa] = m;
                     // first elevation angle for which majority of cells is
                     // illuminated
                     angle_1 = true;
                 }
                 if (shadow_sum == 0){
-                    size_t ind_sa = lin_ind_3d(azim_num, 3, i, k, 2);
-                    shadow_angle[ind_sa] = rad2deg(elev_spac * (double)m);
+                    size_t idx_sa = lin_idx_3d(azim_num, 3, i, k, 2);
+                    shadow_angle_idx[idx_sa] = m;
                     // first elevation angle with full illumination
                     break;
                 }

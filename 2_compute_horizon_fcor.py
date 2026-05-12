@@ -33,28 +33,18 @@ from horizon_svf import horizon_svf_comp_py
 # Load refined ICON mesh
 ###############################################################################
 
-# Select mesh file
-icon_res = "2km"
-file_mesh = "ICON_refined_mesh_test_2km.nc"
-file_out = "SW_dir_cor_" + "test_" + icon_res + ".nc"
-
-# icon_res = "2km"
-# file_mesh = "ICON_refined_mesh_mch_2km.nc"
-# file_out = "SW_dir_cor_" + "mch_" + icon_res + ".nc"
-
-# icon_res = "1km"
-# file_mesh = "ICON_refined_mesh_mch_1km.nc"
-# file_out = "SW_dir_cor_" + "mch_" + icon_res + ".nc"
-
-# icon_res = "500m"
-# file_mesh = "ICON_refined_mesh_mch_500m.nc"
-# file_out = "SW_dir_cor_" + "mch_" + icon_res + ".nc"
+# Select ICON domain
+icon_dom = "test_2km"
+# icon_dom = "mch_2km"
+# icon_dom = "mch_1km"
+# icon_dom = "mch_500m"
 
 # Settings
 check_plots = False
 
 # Load data
 t_beg = perf_counter()
+file_mesh = f"ICON_refined_mesh_{icon_dom}.nc"
 ds = xr.open_dataset(path_in_out + file_mesh)
 vlon = ds["vlon"].values # (num_vertex; float64)
 vlat = ds["vlat"].values # (num_vertex; float64)
@@ -98,14 +88,14 @@ if check_plots:
 num_hori = 24 # number of azimuth angles
 dist_search = 40_000.0 #  horizon search distance [m]
 ray_org_elev = 0.5 # 0.1, 0.2 [m]
-ind_hori_out = np.array([0, 1, 5, 10, 3_000, 3], dtype=np.uint32)
+idx_hori_out = np.array([0, 1, 5, 10, 3_000, 3], dtype=np.uint32)
 # Indices of 'num_cell_child' to output terrain horizon
 num_elev = 91 # number of elevation angles for sw_dir_cor computation
 sw_dir_cor_max = 25.0 # maximum value for SW_dir correction factor
 cons_area_factor = 0 # use area factor for SW_dir correction factor ########################## temporary
 
 # -----------------------------------------------------------------------------
-# Select 'ind_hori_out' based on parent cell mesh
+# Select 'idx_hori_out' based on parent cell mesh
 # -----------------------------------------------------------------------------
 
 # # -------------------------------------------------------------
@@ -176,7 +166,7 @@ cons_area_factor = 0 # use area factor for SW_dir correction factor ############
 # # locations = [[str(name), [float(lon), float(lat)]]
 # #              for name, lat, lon in zip(station_names, lat_obs, lon_obs)]
 # # # -------------------------------------------------------------
-# file_json = path_in_out + f"locations_sel_{icon_res}.json"
+# file_json = path_in_out + f"locations_sel_{icon_dom}.json"
 # with open(file_json, "w") as f:
 #     json.dump(locations, f, indent=4)
 
@@ -200,32 +190,32 @@ cons_area_factor = 0 # use area factor for SW_dir correction factor ############
 # ds.close()
 
 # # Get relevant cell indices
-# ind_tri_all = np.empty(len(locations), dtype=np.uint32) # parent cell indices
+# idx_tri_all = np.empty(len(locations), dtype=np.uint32) # parent cell indices
 # tri_finder = triangles.get_trifinder()
-# for ind, loc in enumerate(locations):
-#     ind_tri = int(tri_finder(*loc[1]))  # type: ignore
-#     ind_tri_all[ind] = ind_tri
-#     print(loc[0], ind_tri, clon_parent[ind_tri], clat_parent[ind_tri])
-# ind_hori_out = np.array([], dtype=np.uint32)
-# for ind in ind_tri_all:
-#      ind_hori_out = np.append(
-#           ind_hori_out,
-#           np.arange(ind * num_cell_child_per_parent,
-#                     (ind + 1) * num_cell_child_per_parent, dtype=np.uint32))
-# print(f"Size of 'ind_hori_out': {ind_hori_out.size}")
+# for idx, loc in enumerate(locations):
+#     idx_tri = int(tri_finder(*loc[1]))  # type: ignore
+#     idx_tri_all[idx] = idx_tri
+#     print(loc[0], idx_tri, clon_parent[idx_tri], clat_parent[idx_tri])
+# idx_hori_out = np.array([], dtype=np.uint32)
+# for idx in idx_tri_all:
+#      idx_hori_out = np.append(
+#           idx_hori_out,
+#           np.arange(idx * num_cell_child_per_parent,
+#                     (idx + 1) * num_cell_child_per_parent, dtype=np.uint32))
+# print(f"Size of 'idx_hori_out': {idx_hori_out.size}")
 
 # Dummy array
-ind_hori_out = np.array([0], dtype=np.uint32)
+idx_hori_out = np.array([0], dtype=np.uint32)
 
 # -----------------------------------------------------------------------------
 
 # Compute f_cor
-f_cor, shadow_angle, terrain_normal, horizon_out, slope_out = \
+f_cor, shadow_angle_idx, terrain_normal, horizon_out, slope_out = \
     horizon_svf_comp_py(
     vlon, vlat,
     elevation.astype(np.float64),
     faces,
-    ind_hori_out,
+    idx_hori_out,
     num_cell_parent, num_cell_child_per_parent,
     num_hori, dist_search,
     ray_org_elev, num_elev,
@@ -233,6 +223,7 @@ f_cor, shadow_angle, terrain_normal, horizon_out, slope_out = \
 
 # Save SW_dir correction factors to NetCDF file
 t_beg = perf_counter()
+file_out = f"SW_dir_cor_{icon_dom}.nc"
 ncfile = Dataset(filename=path_in_out + file_out, mode="w", format="NETCDF4")
 # ncfile = Dataset(filename=path_in_out + "SW_dir_cor_mch_1km_27_stat.nc", mode="w", format="NETCDF4")
 ncfile.dem_source = dem_name
@@ -251,24 +242,24 @@ nc_data.units = "-"
 nc_data.long_name = "SW_dir correction factor"
 nc_data[:] = f_cor
 # -----------------------------------------------------------------------------
-nc_data = ncfile.createVariable(varname="shadow_angle", datatype="f4",
+nc_data = ncfile.createVariable(varname="shadow_angle_idx", datatype="i4",
                                 dimensions=("num_cell_parent", "num_hori",
                                             "angles"))
-nc_data.units = "deg"
-nc_data.long_name = "Relevant angles for shadow casting"
-nc_data[:] = shadow_angle
+nc_data.units = "-"
+nc_data.long_name = "Relevant angles (indices) for shadow casting"
+nc_data[:] = shadow_angle_idx
 # -----------------------------------------------------------------------------
 nc_data = ncfile.createVariable(varname="terrain_normal", datatype="f4",
                                 dimensions=("num_cell_parent", "vec_comp"))
 nc_data.units = "-"
-nc_data.long_name = "Sub-grid cell average terrain normal"
+nc_data.long_name = "Sub-grid cell average terrain normal (not normalised)"
 nc_data[:] = terrain_normal
 # -----------------------------------------------------------------------------
 nc_data = ncfile.createVariable(varname="ind_hori_out", datatype="i4",
                                 dimensions=("num_hori_out"))
 nc_data.units = "-"
 nc_data.long_name = "Indices of num_cell_child to output terrain horizon"
-nc_data[:] = ind_hori_out
+nc_data[:] = idx_hori_out
 # -----------------------------------------------------------------------------
 nc_data = ncfile.createVariable(varname="horizon", datatype="f8",
                                 dimensions=("num_hori_out", "num_hori"))
@@ -296,9 +287,9 @@ if check_plots:
     elev = np.linspace(0.0, 90.0, 91)
 
     # Plot f_cor
-    ind = 3334
+    idx = 3334
     fig = plt.figure(figsize=(14, 6))
-    plt.pcolormesh(azim, elev, f_cor[ind, :, :].transpose(),
+    plt.pcolormesh(azim, elev, f_cor[idx, :, :].transpose(),
                    vmin=0.0, vmax=2.0, cmap="RdBu_r")
     plt.axis((0.0, 345.0, 0.0, 70.0))
     plt.colorbar()
@@ -306,12 +297,12 @@ if check_plots:
 
     fig = plt.figure()
     for i in range(0, num_hori, 2):
-            plt.plot(elev, f_cor[ind, i, :])
+            plt.plot(elev, f_cor[idx, i, :])
     plt.show()
 
     # Plot terrain horizon
     fig = plt.figure()
-    for i in range(ind_hori_out.size):
+    for i in range(idx_hori_out.size):
             plt.plot(azim, horizon_out[i, :])
     plt.show()
 

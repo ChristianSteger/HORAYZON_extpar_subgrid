@@ -22,8 +22,7 @@ from functions.refine_icon_mesh import centroid_values
 style.use("classic")
 
 # Paths
-path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
-    + "ICON_grids_EXTPAR/"
+path_icon_grid = "/store_new/mch/msopr/csteger/Data/Miscellaneous/ICON_grids/"
 path_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
 
 ###############################################################################
@@ -39,35 +38,31 @@ path_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
 dem_name = "ASTER"
 
 # ICON test (2km)
-icon_res = "2km"
+icon_dom = "test_2km"
 icon_grid = "test/icon_grid_DOM01.nc"
 n_sel = 73 # mesh refinement level (identical to theoretical value)
 # n_sel = 36 # temporary for testing
 check_mesh = True # optional (computational intensive) mesh checking steps
-file_out = "ICON_refined_mesh_" + "test_" + icon_res + ".nc"
 
 # # ICON MCH (2km)
-# icon_res = "2km"
+# icon_dom = "mch_2km"
 # icon_grid = "MeteoSwiss/icon_grid_0002_R19B07_mch.nc"
 # n_sel = 73 # (identical to theoretical value)
 # # n_sel = 66 # ('faces_child' < 16 GB)
 # check_mesh = False
-# file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
 
 # # ICON MCH (1km)
-# icon_res = "1km"
+# icon_dom = "mch_1km"
 # icon_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc"
 # n_sel = 37 # (identical to theoretical value)
 # # n_sel = 33 # ('faces_child' < 16 GB)
 # check_mesh = False
-# file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
 
 # # ICON MCH (500m)
-# icon_res = "500m"
+# icon_dom = "mch_500m"
 # icon_grid = "MeteoSwiss/icon_grid_00005_R19B09_DOM02.nc"
 # n_sel = 18 # (identical to theoretical value)
 # check_mesh = False
-# file_out = "ICON_refined_mesh_" + "mch_" + icon_res + ".nc"
 
 # -----------------------------------------------------------------------------
 
@@ -77,7 +72,7 @@ print(f"DEM resolution: {(res_dem):.1f} m")
 cell_area_dem = res_dem ** 2  # [m2]
 
 # Load ICON grid with specific resolution
-ds = xr.open_dataset(path_ige + icon_grid)
+ds = xr.open_dataset(path_icon_grid + icon_grid)
 vlon = ds["vlon"].values
 vlat = ds["vlat"].values
 vertex_of_cell = ds["vertex_of_cell"].values - 1  # (3, num_cell; int32)
@@ -154,10 +149,10 @@ print(f"Maximal chord distance {(alpha_max * dist_per_deg):.1f} m")
 # ----------------- nearest neighbour check -----------------
 if check_mesh:
     tree = KDTree(vertices_child)
-    dist, ind = tree.query(centroids, k=3, workers=4)
-    if np.any(np.sort(faces_child, axis=1) != np.sort(ind, axis=1)):
+    dist, idx = tree.query(centroids, k=3, workers=4)
+    if np.any(np.sort(faces_child, axis=1) != np.sort(idx, axis=1)):
         raise ValueError("Array 'faces_child' is erroneous")
-    del tree, dist, ind
+    del tree, dist, idx
 # -----------------------------------------------------------
 del centroids
 
@@ -313,6 +308,7 @@ if check_mesh:
 ###############################################################################
 
 t_beg = perf_counter()
+file_out = f"ICON_refined_mesh_{icon_dom}.nc"
 ncfile = Dataset(filename=path_out + file_out, mode="w", format="NETCDF4")
 ncfile.createDimension(dimname="num_vertex_child", size=vlon_child.size)
 ncfile.createDimension(dimname="num_cell_child", size=faces_child.shape[0])
