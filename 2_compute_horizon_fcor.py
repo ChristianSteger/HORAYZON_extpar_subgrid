@@ -1,8 +1,7 @@
 # Description: Compute terrain horizon and slope angle/aspect for sub-grid
-#              cells, compute f_cor values and spatially aggregate these
-#              values to the parent cell mesh. Additionally, it is possible
-#              to output terrain horizon and slope angle/aspect for selected
-#              sub-grid cells.
+#              cells and derive relevant ICON grid-scale quantities from these
+#              parameters. Additionally, it is possible to output terrain
+#              horizon and slope angle/aspect for selected sub-grid cells.
 #
 # Author: Christian R. Steger, May 2025
 
@@ -34,9 +33,9 @@ from horizon_svf import horizon_svf_comp_py
 ###############################################################################
 
 # Select ICON domain
-icon_dom = "test_2km"
+# icon_dom = "test_2km"
 # icon_dom = "mch_2km"
-# icon_dom = "mch_1km"
+icon_dom = "mch_1km"
 # icon_dom = "mch_500m"
 
 # Settings
@@ -81,7 +80,7 @@ if check_plots:
     del triangles, elevation_centroids
 
 ###############################################################################
-# Compute spatially aggregated correction factors (f_cor)
+# Settings and optionally compute 'idx_hori_out'
 ###############################################################################
 
 # Settings
@@ -92,15 +91,20 @@ idx_hori_out = np.array([0, 1, 5, 10, 3_000, 3], dtype=np.uint32)
 # Indices of 'num_cell_child' to output terrain horizon
 num_elev = 91 # number of elevation angles for sw_dir_cor computation
 sw_dir_cor_max = 25.0 # maximum value for SW_dir correction factor
-cons_area_factor = 0 # use area factor for SW_dir correction factor ########################## temporary
+cons_area_factor = 0 # use area factor for SW_dir correction factor
+idx_hori_out = np.array([0], dtype=np.uint32) # dummy array
+file_out = (f"SW_dir_cor_{icon_dom}", "nc")
+loc_name = None
 
 # -----------------------------------------------------------------------------
-# Select 'idx_hori_out' based on parent cell mesh
+# Save subgrid parameters (horizon and terrain normal) for certain locations
 # -----------------------------------------------------------------------------
 
-# # -------------------------------------------------------------
-# # MeteoSwiss stations and interesting locations
-# # -------------------------------------------------------------
+# If only the subgrid parameters for the below locations are required, then
+# the ray tracing part can be sped up by including the commented out part in
+# 'mo_lradtopo_horayzon.cpp' around line 560 (-> recompile code!)
+
+# # Own selection (some MCH stations and other interesting locations)
 # locations = [
 #      # ------- MeteoSwiss stations -----------
 #      ["Vicosoprano",     [9.6278,   46.353019]],
@@ -122,7 +126,6 @@ cons_area_factor = 0 # use area factor for SW_dir correction factor ############
 #      ["Calancatal_2",    [9.114330, 46.301508]],
 #      ["Calancatal_3",    [9.116637, 46.445454]],
 #      ["Calancatal_4",    [9.113043, 46.469920]],
-#      ["Windgael_below",  [8.722420, 46.813696]],
 #      ["Schiben_below",   [8.960114, 46.820576]],
 #      ["Linthal",         [8.981141, 46.864608]],
 #      ["Engelhorn_below", [8.163189, 46.668290]],
@@ -153,31 +156,32 @@ cons_area_factor = 0 # use area factor for SW_dir correction factor ############
 #     #  ["Gredetsch_W_fac", [7.940311, 46.357533]]
 #      # ---------------------------------------
 #     ]
-# # -------------------------------------------------------------
-# # All MeteoSwiss stations
-# # -------------------------------------------------------------
-# # path_obs = "/scratch/mch/csteger/temp/movero_obs_data/"
-# # file_obs = path_obs + "20241224sfc.atab"
-# # data = np.genfromtxt(file_obs, skip_header=13, max_rows=4, dtype=str,
-# #                      autostrip=True)
-# # station_names = data[0, 1:]
-# # lat_obs = data[1, 1:].astype(np.float32)
-# # lon_obs = data[2, 1:].astype(np.float32)
-# # locations = [[str(name), [float(lon), float(lat)]]
-# #              for name, lat, lon in zip(station_names, lat_obs, lon_obs)]
-# # # -------------------------------------------------------------
-# file_json = path_in_out + f"locations_sel_{icon_dom}.json"
+# loc_name = "loc_own"
+
+# # All MCH stations
+# path_obs = "/scratch/mch/csteger/temp/movero_obs_data/"
+# file_obs = path_obs + "20241224sfc.atab"
+# data = np.genfromtxt(file_obs, skip_header=13, max_rows=4, dtype=str,
+#                      autostrip=True)
+# station_names = data[0, 1:]
+# lat_obs = data[1, 1:].astype(np.float32)
+# lon_obs = data[2, 1:].astype(np.float32)
+# locations = [[str(name), [float(lon), float(lat)]]
+#              for name, lat, lon in zip(station_names, lat_obs, lon_obs)]
+# loc_name = "loc_mch"
+
+# # Save selected locations
+# file_json = path_in_out + f"{loc_name}.json"
 # with open(file_json, "w") as f:
 #     json.dump(locations, f, indent=4)
 
-# # Load data
-# path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
-#     + "ICON_grids_EXTPAR/"
+# # Load ICON grid information
+# path_grid = "/store_new/mch/msopr/csteger/Data/Miscellaneous/ICON_grids/"
 # # icon_grid = "test/icon_grid_DOM01.nc"
-# icon_grid = "MeteoSwiss/icon_grid_0002_R19B07_mch.nc" # 2km
-# # icon_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc" # 1km
+# # icon_grid = "MeteoSwiss/icon_grid_0002_R19B07_mch.nc" # 2km
+# icon_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc" # 1km
 # # icon_grid = "MeteoSwiss/icon_grid_00005_R19B09_DOM02.nc" # 500m
-# ds = xr.open_dataset(path_ige + icon_grid)
+# ds = xr.open_dataset(path_grid + icon_grid)
 # vlon_parent = np.rad2deg(ds["vlon"].values)
 # vlat_parent = np.rad2deg(ds["vlat"].values)
 # clon_parent = np.rad2deg(ds["clon"].values)
@@ -204,12 +208,11 @@ cons_area_factor = 0 # use area factor for SW_dir correction factor ############
 #                     (idx + 1) * num_cell_child_per_parent, dtype=np.uint32))
 # print(f"Size of 'idx_hori_out': {idx_hori_out.size}")
 
-# Dummy array
-idx_hori_out = np.array([0], dtype=np.uint32)
+###############################################################################
+# Compute subgrid parameters and save to NetcDF file
+###############################################################################
 
-# -----------------------------------------------------------------------------
-
-# Compute f_cor
+# Compute subgrid parameters
 f_cor, shadow_angle_idx, terrain_normal, horizon_out, slope_out = \
     horizon_svf_comp_py(
     vlon, vlat,
@@ -223,9 +226,11 @@ f_cor, shadow_angle_idx, terrain_normal, horizon_out, slope_out = \
 
 # Save SW_dir correction factors to NetCDF file
 t_beg = perf_counter()
-file_out = f"SW_dir_cor_{icon_dom}.nc"
+if loc_name is None:
+    file_out = ".".join(file_out)
+else:
+    file_out = file_out[0] + f"_{loc_name}." + file_out[1]
 ncfile = Dataset(filename=path_in_out + file_out, mode="w", format="NETCDF4")
-# ncfile = Dataset(filename=path_in_out + "SW_dir_cor_mch_1km_27_stat.nc", mode="w", format="NETCDF4")
 ncfile.dem_source = dem_name
 ncfile.area_factor_used = str(bool(cons_area_factor))
 ncfile.createDimension(dimname="num_cell_parent", size=f_cor.shape[0])
@@ -276,52 +281,3 @@ nc_data[:] = slope_out
 ncfile.close()
 t_end = perf_counter()
 print(f"Write output NetCDF file: {t_end - t_beg:.1f} s")
-
-# -----------------------------------------------------------------------------
-# Simple checks of output
-# -----------------------------------------------------------------------------
-
-if check_plots:
-
-    azim = np.arange(0.0, 360.0, 360 // num_hori)
-    elev = np.linspace(0.0, 90.0, 91)
-
-    # Plot f_cor
-    idx = 3334
-    fig = plt.figure(figsize=(14, 6))
-    plt.pcolormesh(azim, elev, f_cor[idx, :, :].transpose(),
-                   vmin=0.0, vmax=2.0, cmap="RdBu_r")
-    plt.axis((0.0, 345.0, 0.0, 70.0))
-    plt.colorbar()
-    plt.show()
-
-    fig = plt.figure()
-    for i in range(0, num_hori, 2):
-            plt.plot(elev, f_cor[idx, i, :])
-    plt.show()
-
-    # Plot terrain horizon
-    fig = plt.figure()
-    for i in range(idx_hori_out.size):
-            plt.plot(azim, horizon_out[i, :])
-    plt.show()
-
-###############################################################################
-# Temporary - performance scaling with 1 km mesh
-###############################################################################
-
-# # 1km mesh
-# num_cell_parent = np.array([25_000, 50_000, 100_000, 200_000, 500_000, 1_147_980])
-# ray_tracing = np.array([109.66, 321.61, 817.5, 744.40, 2059.60, 2245.14])
-
-# # 2km mesh
-# num_cell_parent = np.array([10_000, 25_000, 50_000, 100_000, 283_876])
-# ray_tracing = np.array([183.44, 602.71, 698.67, 1359.35, 2393.92])
-
-# # Plot
-# plt.figure()
-# plt.plot(num_cell_parent, ray_tracing / num_cell_parent, "-", color="blue", lw=1.5)
-# plt.scatter(num_cell_parent, ray_tracing / num_cell_parent, color="blue", s=30)
-# plt.xlabel("Number of parent cells")
-# plt.ylabel("Ray tracing time / number of parent cells [s]")
-# plt.show()

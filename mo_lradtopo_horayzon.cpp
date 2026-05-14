@@ -556,7 +556,8 @@ void horizon_svf_comp(double* vlon, double* vlat,
 
             // ------------------------------------------------------ temporary
             // // setting to accelerate computation for 'idx_hori_out'
-            // if (idx_hori_out_set.find(idx_cell_ui32b) == idx_hori_out_set.end()) {
+            // if (idx_hori_out_set.find(idx_cell_ui32b)
+            //     == idx_hori_out_set.end()) {
             //     continue;
             // }
             // ------------------------------------------------------ temporary
