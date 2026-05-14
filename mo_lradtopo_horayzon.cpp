@@ -752,8 +752,7 @@ void horizon_svf_comp(double* vlon, double* vlat,
         // Compute relevant elevation angles for shadow
         int num_cell_half = int(num_cell_child_per_parent / 2);
         for (int k = 0; k < azim_num; k++){
-            bool angle_0 = false;
-            bool angle_1 = false;
+            bool flag_hs = false; // flag for half shadow
             for (int m = 0; m < num_elev; m++){
                 int shadow_sum = 0;
                 size_t idx_shadow_0 = lin_idx_3d(num_elev,
@@ -761,18 +760,17 @@ void horizon_svf_comp(double* vlon, double* vlat,
                 for (int n = 0; n < num_cell_child_per_parent; n++){
                     shadow_sum += shadow[idx_shadow_0 + n];
                 }
-                if (!angle_0 && (shadow_sum < num_cell_child_per_parent)){
+                if (shadow_sum == num_cell_child_per_parent){
                     size_t idx_sa = lin_idx_3d(azim_num, 3, i, k, 0);
-                    shadow_angle_idx[idx_sa] = m - 1;
+                    shadow_angle_idx[idx_sa] = m;
                     // last elevation angle with full shadow
-                    angle_0 = true;
                 }
-                if (!angle_1 && (shadow_sum < num_cell_half)){
+                if (!flag_hs && (shadow_sum < num_cell_half)){
                     size_t idx_sa = lin_idx_3d(azim_num, 3, i, k, 1);
                     shadow_angle_idx[idx_sa] = m;
                     // first elevation angle for which majority of cells is
                     // illuminated
-                    angle_1 = true;
+                    flag_hs = true;
                 }
                 if (shadow_sum == 0){
                     size_t idx_sa = lin_idx_3d(azim_num, 3, i, k, 2);
