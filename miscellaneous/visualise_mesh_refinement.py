@@ -8,7 +8,7 @@ from matplotlib.patches import Polygon
 from matplotlib.collections import PatchCollection
 from matplotlib import style, tri
 
-from functions import refine_mesh_nc
+from functions.refine_icon_mesh import refine_mesh_nc
 
 style.use("classic")
 
