@@ -1,6 +1,6 @@
 # Description: Analyse and compare computed f_cor and terrain horizon
 #
-# Author: Christian R. Steger, September 2025
+# Author: Christian R. Steger, May 2026
 
 import datetime as dt
 import json
@@ -64,8 +64,8 @@ with open(file_json, "r") as f:
 # 10: Limmeren ------------------------------------------------------ favourite
 # 12 Gondo (-> radiation only in subgrid-scale cor.)
 # 14 Calancatal_1 --------------------------------------------------- favourite
-# 23 Lauterbrunnen_1
-# 24 Kandertal_S_fac
+# 22 Lauterbrunnen_1
+# 23 Kandertal_S_fac
 ind_loc = 1
 ind_parent_sel = ind_parent[ind_loc]
 

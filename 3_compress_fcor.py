@@ -441,13 +441,13 @@ if check_data:
 
     # Loop through sun positions
     f_cor_rec = np.zeros(elev_sun.size, dtype=np.float32)
-    elev_lower = shadow_angle_extpar[idx_azim * 3 + 0, idx_cell] # [deg]
-    elev_upper = shadow_angle_extpar[idx_azim * 3 + 2, idx_cell] # [deg]
+    horizon_min = shadow_angle_extpar[idx_azim * 3 + 0, idx_cell] # [deg]
+    horizon_max = shadow_angle_extpar[idx_azim * 3 + 2, idx_cell] # [deg]
     t_vec = terrain_normal_extpar[:, idx_cell]
     for idx in range(elev_sun.size):
 
         # Position relative to lower and upper shadow angles (nodes)
-        pos_norm = (elev_sun[idx] - elev_lower) / (elev_upper - elev_lower)
+        pos_norm = (elev_sun[idx] - horizon_min) / (horizon_max - horizon_min)
 
         # ---------------------------------------------------------------------
         # Total shadow -> f_cor = 0.0
@@ -459,7 +459,7 @@ if check_data:
         # ---------------------------------------------------------------------
         elif pos_norm >= 1.0:
 
-            # Sun position vector (available in ICON)
+            # Sun position vector
             elev_ang = np.deg2rad(elev_sun[idx]) # [rad]
             azim_ang = np.deg2rad(azim[idx_azim]) # [rad]
             s_vec = np.array(
@@ -482,9 +482,9 @@ if check_data:
                 print("Warning: 'idx_left' too large -> limit")
                 idx_left = num_nodes - 2
             idx_right = idx_left + 1
-            angle_left = (elev_lower + (elev_upper - elev_lower)
+            angle_left = (horizon_min + (horizon_max - horizon_min)
                         * (float(idx_left) / float(num_nodes - 1)) ** eta_sel)
-            angle_right = (elev_lower + (elev_upper - elev_lower)
+            angle_right = (horizon_min + (horizon_max - horizon_min)
                         * (float(idx_right) / float(num_nodes - 1)) ** eta_sel)
             if idx_left == 0:
                 f_cor_left = 0.0
@@ -492,7 +492,7 @@ if check_data:
                 f_cor_right = f_cor_sparse_extpar[idx_lin, idx_cell]
             elif idx_right == (num_nodes - 1):
 
-                # Sun position vector (sun @ elev_upper)
+                # Sun position vector (sun @ horizon_max)
                 elev_ang = np.deg2rad(angle_right) # [rad]
                 azim_ang = np.deg2rad(azim[idx_azim]) # [rad]
                 s_vec = np.array(
