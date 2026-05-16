@@ -56,7 +56,7 @@ icon_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc"
 file_cor = f"SW_dir_cor_{icon_dom}.nc"
 
 # Settings
-num_nodes = 6
+num_nodes = 7
 # total 7 array elements required: (6 - 2 = 4) f_cor-values, 3 elev. angles
 rad_zenith = 900.0 # direct radiation at zenith for error estimation [W m-2]
 # -> real vales likely lower - particularly at low solar elevation angles
@@ -555,6 +555,9 @@ ds = xr.open_dataset(path_extpar + file_extpar)
 # ----------------------------
 ds = ds.drop_vars("HORIZON")
 ds["HORIZON"] = (("nhori", "cell"), shadow_angle_extpar)
+# data_all = np.vstack((shadow_angle_extpar, f_cor_sparse_extpar,
+#                       terrain_normal_extpar))
+# ds["HORIZON"] = (("nhori", "cell"), data_all)
 ds["HORIZON"].attrs["standard_name"] = "-"
 ds["HORIZON"].attrs["long_name"] = "horizon angle - topography"
 ds["HORIZON"].attrs["units"] = "deg"
@@ -580,7 +583,8 @@ ds["TERRAIN_NORMAL"].attrs["data_set"] = "ASTER"
 encoding = {"time": {"_FillValue": None},
             "HORIZON": {"_FillValue": None},
             "SWDIR_COR": {"_FillValue": None},
-            "TERRAIN_NORMAL": {"_FillValue": None}}
+            "TERRAIN_NORMAL": {"_FillValue": None}
+            }
 # "HORIZON": {"_FillValue": -1.e+20, "missing_value": -1.e+20}
 ds.to_netcdf(path_extpar + file_extpar[:-3] + f"_horizon_subgrid.nc",
              format="NETCDF4", encoding=encoding)

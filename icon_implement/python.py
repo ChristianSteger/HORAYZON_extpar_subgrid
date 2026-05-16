@@ -13,7 +13,7 @@ def interpolate_fcor(horizon, swdir_cor, terrain_normal,
     # Constant values
     num_azim = 24
     eta = 2.0
-    num_nodes = 6 # all interpolation nodes including bounds
+    num_nodes = 7 # all interpolation nodes including bounds
 
     # Azimuth indices
     idx_azim_0 = np.minimum(int(zphi_sun / np.deg2rad(360.0 / num_azim)),
@@ -25,6 +25,7 @@ def interpolate_fcor(horizon, swdir_cor, terrain_normal,
     fcor = np.empty(2, dtype=np.float32)
     azim = np.arange(0.0, 360.0, 360.0 / num_azim)
     h_vec = np.array([0.0, 0.0, 1.0])
+    num_nodes_in = num_nodes - 2
     for i in range(2):
 
         horizon_min = horizon[azim_idx[i] * 3 + 0] # min. horizon angle [deg]
@@ -34,9 +35,11 @@ def interpolate_fcor(horizon, swdir_cor, terrain_normal,
         if np.rad2deg(ztheta_sun) <= horizon_max:
 
             nodes_elev = spacing_exp(horizon_min, horizon_max, num_nodes, eta)
-            nodes_fcor = np.empty(6, dtype=np.float32)
+            nodes_fcor = np.empty(num_nodes, dtype=np.float32)
             nodes_fcor[0] = 0.0
-            nodes_fcor[1:5] = swdir_cor[azim_idx[i] * 4:azim_idx[i] * 4 + 4]
+            nodes_fcor[1:(num_nodes - 1)] \
+                = swdir_cor[azim_idx[i] * num_nodes_in:azim_idx[i] \
+                            * num_nodes_in + num_nodes_in]
             sun_vec = np.array([
                 np.cos(np.deg2rad(horizon_max)) \
                     * np.sin(np.deg2rad(azim[azim_idx[i]])),
@@ -45,7 +48,7 @@ def interpolate_fcor(horizon, swdir_cor, terrain_normal,
                 np.sin(np.deg2rad(horizon_max))
             ])
             dot_prod_s_h = np.dot(sun_vec, h_vec).clip(min=1e-5)
-            nodes_fcor[5] = (1.0 / dot_prod_s_h) \
+            nodes_fcor[num_nodes - 1] = (1.0 / dot_prod_s_h) \
                 * np.dot(sun_vec, terrain_normal)
             fcor[i] = np.interp(np.rad2deg(ztheta_sun), nodes_elev, nodes_fcor)
 

@@ -10,10 +10,11 @@ import xarray as xr
 import matplotlib.pyplot as plt
 from matplotlib import style, tri, colors
 import matplotlib as mpl
+import matplotlib.dates as mdates
 from scipy import interpolate
 from skyfield.api import load, wgs84
 
-from functions.icon_implement import interpolate_fcor # type: ignore
+from icon_implement.fortran import interpolate_fcor
 
 style.use("classic")
 
@@ -25,34 +26,64 @@ mpl.rcParams["mathtext.rm"] = "Bitstream Vera Sans"
 
 # Paths
 path_in_out = "/scratch/mch/csteger/temp/ICON_refined_mesh/"
-path_ige = "/store_new/mch/msopr/csteger/Data/Miscellaneous/" \
-    + "ICON_grids_EXTPAR/"
+path_icon_grid = "/store_new/mch/msopr/csteger/Data/Miscellaneous/ICON_grids/"
 path_plot = "/scratch/mch/csteger/HORAYZON_extpar_subgrid/plots/"
 
 ###############################################################################
-# Compare diurnal cycle of SW_dir
+# Functions
+###############################################################################
+
+def resample_average_own(data: xr.DataArray) -> np.ndarray:
+    """Resample data array to given time resolution using averaging.
+
+    Parameters
+    ----------
+    data : xr.DataArray
+        Accumulated data array with 'step' or 'lead_time' dimension.
+
+    Returns
+    -------
+    data_res: np.ndarray
+        De-accumulated data array.
+    """
+
+    if "step" in data.coords:
+        ta_s = data["step"].values / np.timedelta64(1, "s") # [s]
+    elif "lead_time" in data.coords:
+        ta_s = data["lead_time"].values / np.timedelta64(1, "s") # [s]
+    elif "time" in data.coords:
+        print("Warning: First time is assumed to be reference time")
+        ta_s = (data["time"].values - data["time"].values[0]) \
+            / np.timedelta64(1, "s")
+    else:
+        raise ValueError("Unknown time coordinates in input array")
+    data_res = np.diff(data.values * ta_s[:, np.newaxis], axis=0) \
+        / np.diff(ta_s)[:, np.newaxis] # [W m-2]
+    data_res = np.vstack((np.full((1, data_res.shape[1]), np.nan), data_res))
+
+    return data_res
+
+###############################################################################
+# Select parent grid cell and associated child grid cells
 ###############################################################################
 
 # Settings
-# icon_res = "2km"
-icon_res = "1km"
-# icon_res = "500m"
+icon_dom = "mch_1km"
 
 # Get available parent grid cell indices
-file_mesh = f"ICON_refined_mesh_mch_{icon_res}.nc"
+file_mesh = f"ICON_refined_mesh_{icon_dom}.nc"
 ds = xr.open_dataset(path_in_out + file_mesh)
 num_cell_child_per_parent =  int(ds["num_cell_child_per_parent"].values)
 ds.close()
-# file_fcor = f"SW_dir_cor_mch_{icon_res}.nc" ###################################### temporary
-file_fcor = "SW_dir_cor_mch_1km_27_stat.nc"
+file_fcor = f"SW_dir_cor_{icon_dom}_loc_own.nc"
 ds = xr.open_dataset(path_in_out + file_fcor)
-ind_child = ds["ind_hori_out"].values # index_cell_child
+idx_child = ds["ind_hori_out"].values # index_cell_child
 ds.close()
-ind_parent = (ind_child[slice(0, None, num_cell_child_per_parent)]
+idx_parent = (idx_child[slice(0, None, num_cell_child_per_parent)]
               / num_cell_child_per_parent).astype(int)
 
 # Load locations
-file_json = path_in_out + f"locations_sel_{icon_res}.json"
+file_json = path_in_out + "loc_own.json"
 with open(file_json, "r") as f:
     locations = json.load(f)
 
@@ -60,172 +91,91 @@ with open(file_json, "r") as f:
 # 1: Vals
 # 2: Piotta (-> radiation only in subgrid-scale cor.) --------------- favourite
 # 4: Goeschenen
-# 5: Grono
 # 10: Limmeren ------------------------------------------------------ favourite
 # 12 Gondo (-> radiation only in subgrid-scale cor.)
 # 14 Calancatal_1 --------------------------------------------------- favourite
 # 22 Lauterbrunnen_1
 # 23 Kandertal_S_fac
-ind_loc = 1
-ind_parent_sel = ind_parent[ind_loc]
+idx_cell = 29
+
+# Select indices
+idx_parent_sel = idx_parent[idx_cell]
+slice_child = slice(num_cell_child_per_parent * idx_cell,
+             num_cell_child_per_parent * (idx_cell + 1))
 
 ###############################################################################
-# New stuff
+# Checks
 ###############################################################################
 
-# Load MCH 1km grid
-file_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc"
-ds = xr.open_dataset(path_ige + file_grid)
-clon = np.rad2deg(ds["clon"].values[ind_parent_sel]) # [deg]
-clat = np.rad2deg(ds["clat"].values[ind_parent_sel]) # [deg]
-ds.close()
-print(clat, clon)
+# -----------------------------------------------------------------------------
+# Recompute averaged sub-grid-scale terrain normal
+# -----------------------------------------------------------------------------
 
-# Get f_cor for location
+# Get subgrid correction information
 ds = xr.open_dataset(path_in_out + file_fcor)
-f_cor_arr = ds["f_cor"][ind_parent_sel, :, :].values
+terrain_normal = ds["terrain_normal"][idx_parent_sel, :].values
 ds.close()
 
 # Get child terrain normal vectors
 ds = xr.open_dataset(path_in_out + file_fcor)
-slic = slice(num_cell_child_per_parent * ind_loc, 
-             num_cell_child_per_parent * (ind_loc + 1))
-tri_norms = ds["slope"][slic, :].values
-horizon = ds["horizon"][slic, :].values
+tri_norms_sg = ds["slope"][slice_child, :].values
 ds.close()
 
 # Terrain average normal vector
-tri_norm_av = tri_norms.sum(axis=0) / tri_norms[:, -1].sum() # not a unit vector!!!
-
-# Grid scale terrain properties
-file = "/scratch/mch/csteger/alpine_twin/tst/exp/10/wd/24081000_10/lm_coarse/000/lfff00000000c.nc"
-ds = xr.open_dataset(file)
-slope_angle = ds["slope_angle"][ind_parent_sel].values # [rad]
-slope_azimuth = ds["slope_azimuth"][ind_parent_sel].values + np.pi # [rad] (measured from south clockwise)
-ds.close()
-file = "/scratch/mch/csteger/ExtPar/output/HORAYZON_extpar/topography_i1_horayzon.nc"
-ds = xr.open_dataset(file)
-hori_gs =  ds["HORIZON"][:, ind_parent_sel].values # [deg]
-ds.close()
-
-# Local horizontal normal
-h = np.array([0.0, 0.0, 1.0])
-
-elev_ang = np.arange(0, 91, 1)
-azim_ang = np.arange(0, 360, 15)
-f_cor_new = np.empty(91)
-f_cor_new_shadow = np.empty(91)
-f_cor_gs = np.empty(91)
-f_cor_gs_shadow = np.empty(91)
-
-ind_azim = 12 # [0, 23]
-
-q = np.array([5, 50, 95])
-hori_per = np.percentile(horizon[:, ind_azim], q=q)
-
-for i in range(91):
-
-    # Sun position
-    azim = np.deg2rad(azim_ang[ind_azim])
-    elev = np.deg2rad(elev_ang[i])
-    x = np.cos(elev) * np.sin(azim)
-    y = np.cos(elev) * np.cos(azim)
-    z = np.sin(elev)
-    sun_dir = np.array([x, y, z])
-
-    mask_shadow = np.interp(np.rad2deg(elev), hori_per, q) / 100.0
-    if mask_shadow <= 0.06:
-        mask_shadow = 0.0
-    if mask_shadow >= 0.94:
-        mask_shadow = 1.0
-
-    f_cor_new[i] = 1.0 / np.dot(h, sun_dir) * np.dot(sun_dir, tri_norm_av)
-    f_cor_new_shadow[i] = 1.0 / np.dot(h, sun_dir) * np.dot(sun_dir, tri_norm_av) * mask_shadow
-
-    # Grid scale
-    x = np.sin(slope_angle) * np.sin(slope_azimuth)
-    y = np.sin(slope_angle) * np.cos(slope_azimuth)
-    z = np.cos(slope_angle)
-    tri_norm_gs = np.array([x, y, z])
-
-    f_cor_gs[i] = 1.0 / np.dot(h, sun_dir) * np.dot(sun_dir, tri_norm_gs) * 1.0 / np.cos(slope_angle)
-    mask_shadow = 1.0
-    if hori_gs[ind_azim] > elev_ang[i]:
-        mask_shadow = 0.0
-    f_cor_gs_shadow[i] = 1.0 / np.dot(h, sun_dir) * np.dot(sun_dir, tri_norm_gs) * 1.0 / np.cos(slope_angle) * mask_shadow
-
-
-# Test plot
-plt.figure()
-plt.plot(elev_ang, f_cor_arr[ind_azim, :], color="black", lw=5.0, alpha=0.5)
-plt.plot(elev_ang, f_cor_new, color="red", ls="-")
-plt.plot(elev_ang, f_cor_new_shadow, color="red", ls="--")
-plt.plot(elev_ang, f_cor_gs, color="blue", ls="-")
-plt.plot(elev_ang, f_cor_gs_shadow, color="blue", ls="--")
-plt.axis((0.0, 90.0, 0.0, 2.5))
-plt.show()
-
-
+tri_norm_av = tri_norms_sg.mean(axis=0)
+print(np.abs(tri_norm_av - terrain_normal).max()) # check averaged normal
 
 ###############################################################################
-# Old stuff
+# Check diurnal cycle of direct beam shortwave radiation
 ###############################################################################
 
-# -----------------------------------------------------------------------------
-# Uncorrected and grid-scale corrected SW_dir
-# -----------------------------------------------------------------------------
+# Extract and merge direct beam shortwave radiation fluxes for quicker access
+# cdo selname,ASWDIR_S,ASWDIR_S_OS,ASWDIR_S_TAN_OS -cat lfff0???0000.nc ASWDIR_S_hourly.nc
+# cdo selname,ASWDIR_S,ASWDIR_S_OS,ASWDIR_S_TAN_OS -cat lffm0????000.nc ASWDIR_S_10min.nc
 
-# Load uncorrected SW_dir
-# module load cdo/2.0.5-gcc
-# ls lffm*0.nc | wc -l
-# cdo cat -select,name=ASWDIR_S lffm*0.nc ASWDIR_S.nc
-path = "/scratch/mch/csteger/wd/24122500_74/lm_coarse/000/"
-ds = xr.open_dataset(path + "ASWDIR_S.nc")
-time_axis = ds["time"].values # time (UTC)
-seconds = (time_axis - time_axis[0]) / (10 ** 9) # seconds since start
-sw_dir = ds["ASWDIR_S"][:, ind_parent_sel].values # cumulative values!
-sw_dir_uncor = np.diff(sw_dir * seconds) / np.diff(seconds) # [W m-2]
+# Load ICON simulation data
+path_icon = "/scratch/mch/csteger/alpine_twin/tst/exp/55/" \
+    + "wd/24122500_55/lm_coarse/000/"
+# file = path_icon + "ASWDIR_S_hourly.nc" # hourly data
+file = path_icon + "ASWDIR_S_10min.nc" # 10-min. data
+data_icon = {}
+var_sel = ("ASWDIR_S", "ASWDIR_S_OS", "ASWDIR_S_TAN_OS")
+ds = xr.open_dataset(file)
+slice_cell = slice(idx_parent_sel, idx_parent_sel + 1)
+# keep second axis for function 'resample_average_own'
+for var in var_sel:
+    data_icon[var] = resample_average_own(ds[var][:, slice_cell])
+time_axis = ds["time"].values
 ds.close()
+time_axis_dt = [dt.datetime.strptime(str(i)[:19], "%Y-%m-%dT%H:%M:%S")
+                .replace(tzinfo=dt.timezone.utc) for i in time_axis]
 
-# Load grid-scaled corrected SW_dir
-# path = "/scratch/mch/csteger/wd/24122500_73/lm_coarse/000/"  # not 1/cos(slope)
-path = "/scratch/mch/csteger/wd/24122500_77/lm_coarse/000/" # 1/cos(slope)
-ds = xr.open_dataset(path + "ASWDIR_S.nc")
-sw_dir = ds["ASWDIR_S"][:, ind_parent_sel].values # cumulative values!
-sw_dir_gs_cor = np.diff(sw_dir * seconds) / np.diff(seconds) # [W m-2]
-ds.close()
-time_axis = time_axis[:-1] + np.diff(time_axis) / 2.0
-
-# -----------------------------------------------------------------------------
-# Subgrid corrected SW_dir (from f_cor ray-tracing data)
-# -----------------------------------------------------------------------------
-
-# Compute solar azimuth and elevation angle for time_axis
+# Load ICON grid coordinates
 file_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc"
-ds = xr.open_dataset(path_ige + file_grid)
-clon = np.rad2deg(ds["clon"].values[ind_parent_sel]) # [deg]
-clat = np.rad2deg(ds["clat"].values[ind_parent_sel]) # [deg]
+ds = xr.open_dataset(path_icon_grid + file_grid)
+clon = np.rad2deg(ds["clon"].values[idx_parent_sel]) # [deg]
+clat = np.rad2deg(ds["clat"].values[idx_parent_sel]) # [deg]
 ds.close()
+
+# Compute sun position for relevant times
 planets = load("de421.bsp")
 sun = planets["sun"]
 earth = planets["earth"]
 loc_obs = earth + wgs84.latlon(clat, clon)
-time_axis_dt = [dt.datetime.strptime(str(i)[:19], "%Y-%m-%dT%H:%M:%S")
-                .replace(tzinfo=dt.timezone.utc) for i in time_axis]
 sun_azim = np.empty(time_axis.size)
 sun_elev = np.empty(time_axis.size)
 ts = load.timescale()
-for ind_i, ta in enumerate(time_axis_dt):
+for idx_i, ta in enumerate(time_axis_dt):
     t = ts.from_datetime(ta)
     astrometric = loc_obs.at(t).observe(sun)
     alt, az, d = astrometric.apparent().altaz()
-    sun_azim[ind_i] = az.degrees
-    sun_elev[ind_i] = alt.degrees
+    sun_azim[idx_i] = az.degrees
+    sun_elev[idx_i] = alt.degrees
 
-# Compute interpolated f_cor values from dense 'f_cor'-array
-file_in = f"SW_dir_cor_mch_{icon_res}.nc"
+# Compute direct beam shortwave correction on sub-grid scale (full fcor data)
+file_in = f"SW_dir_cor_{icon_dom}.nc"
 ds = xr.open_dataset(path_in_out + file_in)
-f_cor_loc = ds["f_cor"][ind_parent_sel, :, :].values # (24, 91)
+f_cor_loc = ds["f_cor"][idx_parent_sel, :, :].values # (24, 91)
 ds.close()
 azim = np.linspace(0.0, 360.0, 25) # cyclic, [deg]
 elev = np.linspace(0.0, 90.0, 91) # [deg]
@@ -234,107 +184,142 @@ f_ip = interpolate.RegularGridInterpolator((azim, elev), f_cor_loc_cyc,
                                            bounds_error=False, fill_value=0.0)
 f_cor_ip_dense = f_ip(np.vstack((sun_azim, sun_elev)).transpose())
 
-# Interpolated f_cor values from array 'f_cor_sparse' (EXTPAR array format)
-file = "/scratch/mch/csteger/ICON-CH1-EPS_copy/" \
-    + "external_parameter_icon_grid_0001_R19B08_mch_tuned_f_cor_sparse.nc"
+# Compute direct beam shortwave correction on sub-grid scale (compressed data)
+file = "/scratch/mch/csteger/ICON-CH1-EPS_copy_inn/" \
+    + "external_parameter_icon_grid_0001_R19B08_mch_tuned_horizon_subgrid.nc"
 ds = xr.open_dataset(file)
-num_gc_icon = ds["cell"].size
-f_cor_sparse_extpar = ds["HORIZON"][:, ind_parent_sel].values
+horizon = ds["HORIZON"][:, idx_parent_sel].values # (72)
+swdir_cor = ds["SWDIR_COR"][:, idx_parent_sel].values # (96)
+terrain_normal = ds["TERRAIN_NORMAL"][:, idx_parent_sel].values # (3)
+ds.close()
+f_cor_sparse_extpar = ds["HORIZON"][:, idx_parent_sel].values
 ds.close()
 f_cor_ip_sparse = np.zeros_like(f_cor_ip_dense)
 for i in range(f_cor_ip_sparse.size):
     zphi_sun = np.deg2rad(sun_azim[i])
     ztheta_sun = np.deg2rad(sun_elev[i])
-    f_cor_ip_sparse[i] = interpolate_fcor(f_cor_sparse_extpar,
-                                          ztheta_sun, zphi_sun)
+    f_cor_ip_sparse[i] = interpolate_fcor(
+        horizon, swdir_cor, terrain_normal, ztheta_sun, zphi_sun)
 
-# -----------------------------------------------------------------------------
-# Subgrid correction based on separate spatial aggregation of terrain slope
-# and terrain horizon
-# -----------------------------------------------------------------------------
-
-# Child grid information
-file_mesh = f"ICON_refined_mesh_mch_{icon_res}.nc"
-ds = xr.open_dataset(path_in_out + file_mesh)
-num_cell_child_per_parent = int(ds["num_cell_child_per_parent"])
+# Get horizon information
+ds = xr.open_dataset(file)
+horizon = ds["HORIZON"][:, idx_parent_sel].values.reshape(24, 3) # (24, 3)
+ds.close()
+ds = xr.open_dataset(path_in_out + file_fcor)
+horizon_sg = ds["horizon"][slice_child, :].values # (1369, 24)
 ds.close()
 
-# Load subgrid terrain slope and horizon
-ds = xr.open_dataset(path_in_out + file_in)
-slice_sg = slice(ind_loc * num_cell_child_per_parent,
-                 (ind_loc + 1) * num_cell_child_per_parent)
-horizon = ds["horizon"][slice_sg, :].values # (24, 91)
-slope = ds["slope"][slice_sg, :].values # (24, 91)
-ds.close()
-
-# Compute horizon percentiles and average terrain slope
-q = np.array([0.0, 25.0, 50.0, 75.0, 100.0])
-horizon_perc = np.percentile(horizon, q=q, axis=0)
-terrain_norm = slope.sum(axis=0)
-terrain_norm = terrain_norm / np.linalg.norm(terrain_norm)
-slope = np.arccos(terrain_norm[2].clip(max=1.0))
-aspect = np.pi / 2.0 - np.arctan2(terrain_norm[1], terrain_norm[0])
-print(f"Mean slope: {np.rad2deg(slope):.2f} deg, "
-      + f"mean aspect: {np.rad2deg(aspect):.2f} deg")
-
-# # Test plot
+# # Check subgrid-horizon-distribution with histogram
+# idx_azim = 16
+# frac_illum_3 = np.array([0.0, 0.5, 1.0])
 # plt.figure()
-# for i in range(num_cell_child_per_parent):
-#     plt.plot(horizon[i, :], color="gray", lw=0.5)
-# for i in range(5):
-#     plt.plot(horizon_perc[i, :], color="red", lw=0.5)
+# plt.hist(horizon_sg[:, idx_azim], bins=100, cumulative=True, density=True)
+# plt.plot(horizon[idx_azim, :], frac_illum_3, color="red")
+# plt.scatter(horizon[idx_azim, :], frac_illum_3, color="red", s=50)
 # plt.show()
 
-# Compute f_cor
-horizontal_norm = np.array([0.0, 0.0, 1.0])
-horizon_perc_cyc = np.hstack((horizon_perc, horizon_perc[:, 0:1])) # (5, 25)
-f_ip = interpolate.interp1d(azim, horizon_perc_cyc, axis=1)
+# Compute shadowing on sub-grid scale
+num_azim = 24
+azim_spac = float(360.0 / num_azim)
+frac_illum = np.empty(sun_azim.size) # subgrid illumination fraction
+for i in range(sun_azim.size):
+
+    # Azimuth indices and interpolation weights
+    idx_0 = np.minimum(num_azim - 1, int(sun_azim[i] / azim_spac))
+    idx_1 = np.mod(idx_0 + 1, num_azim)
+    weight_0 = (azim_spac*(idx_0 + 1) - sun_azim[i]) / azim_spac
+    weight_1 = 1.0 - weight_0
+
+    # Binary shadow according to median horizon -------------------------------
+    horizon_ip = horizon[idx_0, 1] * weight_0 + horizon[idx_1, 1] * weight_1
+    frac_illum[i] = float(horizon_ip < sun_elev[i])
+    # Fractional shadow -------------------------------------------------------
+    # frac_illum_0 = np.interp(sun_elev[i], horizon[idx_0, :], frac_illum_3)
+    # frac_illum_1 = np.interp(sun_elev[i], horizon[idx_1, :], frac_illum_3)
+    # frac_illum[i] = frac_illum_1 * weight_1 + frac_illum_0 * weight_0
+    # -> fractional shadow can also be computed from the full subgrid horizon
+    #    information 'horizon_sg' to check how accurate this information is...
+    # -------------------------------------------------------------------------
+aswdir_s_os_sg = data_icon["ASWDIR_S"].squeeze() * frac_illum
+
+# Compute correction separately for shadow and slope
+q = np.array([0.0, 25.0, 50.0, 75.0, 100.0])
+horizon_perc = np.percentile(horizon_sg, q=q, axis=0) # (5, 24)
 frac_illuminated = q / 100.0
 f_cor_ip_sep = np.zeros_like(f_cor_ip_dense)
-for i in range(f_cor_ip_sep.size):
+h_vec = np.array([0.0, 0.0, 1.0])
+for i in range(sun_azim.size):
     if sun_elev[i] > 1.0:
-        sun = np.array([np.cos(np.deg2rad(sun_elev[i]))
-                        * np.sin(np.deg2rad(sun_azim[i])),
-                        np.cos(np.deg2rad(sun_elev[i]))
-                        * np.cos(np.deg2rad(sun_azim[i])),
-                        np.sin(np.deg2rad(sun_elev[i]))])
-        dot_ts = np.dot(terrain_norm, sun)
+
+        # Azimuth indices and interpolation weights
+        idx_0 = np.minimum(num_azim - 1, int(sun_azim[i] / azim_spac))
+        idx_1 = np.mod(idx_0 + 1, num_azim)
+        weight_0 = (azim_spac*(idx_0 + 1) - sun_azim[i]) / azim_spac
+        weight_1 = 1.0 - weight_0
+
+        # Get shadow fractions for two azimuth directions and interpolate
+        frac_illum_0 = np.interp(sun_elev[i], horizon_perc[:, idx_0],
+                                 frac_illuminated)
+        frac_illum_1 = np.interp(sun_elev[i], horizon_perc[:, idx_1],
+                                 frac_illuminated)
+        frac_illum = frac_illum_0 * weight_0 + frac_illum_1 * weight_1
+
+        sun_elev_rad = np.deg2rad(sun_elev[i])
+        sun_azim_rad = np.deg2rad(sun_azim[i])
+        sun_vec = np.array([np.cos(sun_elev_rad) * np.sin(sun_azim_rad),
+                            np.cos(sun_elev_rad) * np.cos(sun_azim_rad),
+                            np.sin(sun_elev_rad)])
+        dot_ts = np.dot(tri_norm_av, sun_vec)
         if dot_ts > 0.0:
-            horizon_perc_azim = f_ip(sun_azim[i])
-            mask_shadow = np.interp(sun_elev[i], horizon_perc_azim,
-                                    frac_illuminated)
-            f_cor_ip_sep[i] = (1.0 / np.dot(horizontal_norm, sun)) \
-                * (1.0 / np.dot(horizontal_norm, terrain_norm)) \
-                    * dot_ts * mask_shadow
-f_cor_ip_sep = f_cor_ip_sep.clip(max=10)
+            f_cor_ip_sep[i] = (1.0 / np.dot(sun_vec, h_vec).clip(min=1e-5)) \
+                    * dot_ts * frac_illum
+f_cor_ip_sep = f_cor_ip_sep.clip(min=0.0, max=10.0)
+aswdir_s_tan_os_sep = data_icon["ASWDIR_S"].squeeze() * f_cor_ip_sep
 
-# -----------------------------------------------------------------------------
-# Plot
-# -----------------------------------------------------------------------------
-
+# Plot diurnal cycle of direct shortwave radiation for different corrections
 lw = 2.0
 plt.figure(figsize=(8.5, 6.0))
-plt.plot(time_axis, sw_dir_uncor, label="Uncorrected", color="black", lw=lw)
-plt.plot(time_axis, sw_dir_gs_cor, label="Cor. (grid)",
-         color="red", lw=lw)
-plt.plot(time_axis, sw_dir_uncor * f_cor_ip_dense,
-         label="Cor. (subgrid; dense)", color="blue", lw=lw)
-plt.plot(time_axis, sw_dir_uncor * f_cor_ip_sparse,
-         label="Cor. (subgrid; sparse)", color="deepskyblue",
-         lw=lw, ls="--")
-
-plt.plot(time_axis, sw_dir_uncor * f_cor_ip_sep,
-         label="Cor. (subgrid; separate)", color="violet",
-         lw=lw, ls="--")
-
-plt.legend(frameon=False, fontsize=10)
+ax = plt.axes()
+data_max = np.array([], dtype=np.float32)
+# ---------- Uncorrected flux -------------------------------------------------
+plt.plot(time_axis, data_icon["ASWDIR_S"].squeeze(), label="ASWDIR_S",
+         lw=1.5, color="black")
+data_max = np.append(data_max, data_icon["ASWDIR_S"].squeeze())
+# ---------- Shadow correction ------------------------------------------------
+plt.plot(time_axis, data_icon["ASWDIR_S_OS"].squeeze(),
+         label="ASWDIR_S_OS (grid-scale)",
+         lw=lw, color="green")
+plt.plot(time_axis, aswdir_s_os_sg,
+         label="ASWDIR_S_OS (subgrid)",
+         lw=lw, ls="--", color="limegreen")
+# ---------- Shadow & slope correction ----------------------------------------
+plt.plot(time_axis, data_icon["ASWDIR_S_TAN_OS"].squeeze(),
+         label="ASWDIR_S_TAN_OS (grid-scale)",
+         lw=lw, color="blue")
+data_max = np.append(data_max, data_icon["ASWDIR_S_TAN_OS"].squeeze())
+plt.plot(time_axis, data_icon["ASWDIR_S"].squeeze() * f_cor_ip_dense,
+         label="ASWDIR_S_TAN_OS (subgrid; dense)",
+         lw=lw, ls=":", color="cornflowerblue")
+data_max = np.append(data_max,
+                     data_icon["ASWDIR_S"].squeeze() * f_cor_ip_dense)
+plt.plot(time_axis, data_icon["ASWDIR_S"].squeeze() * f_cor_ip_sparse,
+         label="ASWDIR_S_TAN_OS (subgrid; sparse)",
+         lw=lw, ls="--", color="mediumorchid")
+# ---------- Shadow & slope correction (separate) -----------------------------
+plt.plot(time_axis, aswdir_s_tan_os_sep,
+         label="ASWDIR_S_TAN_OS (subgrid; separate)",
+         lw=lw, ls="--", color="red")
+# -----------------------------------------------------------------------------
+plt.legend(frameon=False, fontsize=9)
 plt.xlabel("Time (UTC)")
 plt.ylabel(r"Direct beam shortwave radiation [W m$^{-2}$]")
-plt.title(f"Grid cell: {locations[ind_loc][0]}", loc="left", fontsize=11)
+plt.title(f"Grid cell: {locations[idx_cell][0]}", loc="left", fontsize=11)
 plt.title(time_axis_dt[0].strftime("%Y-%m-%d"), loc="right", fontsize=11)
-plt.xlim(time_axis[35], time_axis[-36])
+plt.xlim(time_axis[35], time_axis[-12])
+plt.ylim((-5.0, np.nanmax(data_max) * 1.05))
+ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
 # plt.show()
-plt.savefig(path_plot + f"diurnal_cycle_{locations[ind_loc][0]}.jpg",
+plt.savefig(path_plot + f"diurnal_cycle_{locations[idx_cell][0]}.jpg",
             dpi=300, bbox_inches="tight")
 plt.close()
 
@@ -342,40 +327,25 @@ plt.close()
 # Compare subgrid f-cor with (sub-)gird terrain horizon of grid cell
 ###############################################################################
 
-# 1km
-file_mesh = "ICON_refined_mesh_mch_1km.nc"
-file_hori_fcor = "SW_dir_cor_" + "mch_" + icon_res + ".nc"
-file_extpar = "MeteoSwiss/extpar_grid_shift_topo/" \
-    + "extpar_icon_grid_0001_R19B08_mch.nc"
-file_grid = "MeteoSwiss/icon_grid_0001_R19B08_mch.nc"
-
-# Get initial information
-ds = xr.open_dataset(path_in_out + file_hori_fcor)
-ind_hori_out = ds["ind_hori_out"].values # index_cell_child
-ds.close()
-ds = xr.open_dataset(path_in_out + file_mesh)
-num_cell_child_per_parent = int(ds["num_cell_child_per_parent"])
-ds.close()
-ind_cell_parent = ind_hori_out[slice(0, None, num_cell_child_per_parent)] \
-    // num_cell_child_per_parent
-
 # Load information from SW_dir_cor computation
-ds = xr.open_dataset(path_in_out + file_hori_fcor)
+ds = xr.open_dataset(path_in_out + file_fcor)
 horizon_child = ds["horizon"].values # (num_hori_out, num_hori)
-f_cor = ds["f_cor"][ind_cell_parent, :, :].values # (num_hori_out, num_hori)
+f_cor = ds["f_cor"][idx_parent, :, :].values # (num_hori_out, num_hori)
 ds.close()
 
 # Load terrain horizon (grid-scale cell)
-ds = xr.open_dataset(path_ige + file_extpar)
-horizon_grid_scale = ds["HORIZON"].values[:, ind_cell_parent]
+file_extpar = "/scratch/mch/csteger/ICON-CH1-EPS_copy_inn/" \
+    + "external_parameter_icon_grid_0001_R19B08_mch_tuned.nc"
+ds = xr.open_dataset(file_extpar)
+horizon_grid_scale = ds["HORIZON"].values[:, idx_parent]
 ds.close()
 
 # Select location
-ind_loc = 1 # (0, 1, 2, 3) (Vicosoprano, Vals, Piotta, Cevio)
+idx_loc = 1 # (0, 1, 2, 3) (Vicosoprano, Vals, Piotta, Cevio)
 
 # Compute subgrid-scale horizon statistics
-slice_loc = slice(ind_loc * num_cell_child_per_parent,
-                  (ind_loc + 1) * num_cell_child_per_parent)
+slice_loc = slice(idx_loc * num_cell_child_per_parent,
+                  (idx_loc + 1) * num_cell_child_per_parent)
 q = np.array([0.0, 25.0, 50.0, 75.0, 100.0])
 horizon_perc = np.percentile(horizon_child[slice_loc, :], q=q, axis=0)
 
@@ -388,20 +358,20 @@ norm = colors.BoundaryNorm(levels, ncolors=cmap.N, extend="max")
 azim = np.arange(0.0, 360.0, 360 // horizon_child.shape[1])
 elev = np.linspace(0.0, 90.0, 91)
 plt.figure(figsize=(11.0, 5.5))
-plt.pcolormesh(azim, elev, f_cor[ind_loc, :, :].transpose(), shading="auto",
+plt.pcolormesh(azim, elev, f_cor[idx_loc, :, :].transpose(), shading="auto",
                cmap=cmap, norm=norm)
 cbar = plt.colorbar(pad=0.03)
 cbar.set_label(r"Subgrid SW$_{dir}$ correction factor [-]", labelpad=8)
 for i in range(5):
     plt.plot(azim, horizon_perc[i, :], color="grey", lw=1.0)
-plt.plot(azim, horizon_grid_scale[:, ind_loc], color="black", linewidth=2.5)
+plt.plot(azim, horizon_grid_scale[:, idx_loc], color="black", linewidth=2.5)
 plt.xlabel("Azimuth angle (clockwise from North) [deg]")
 plt.ylabel("Elevation angle [deg]")
 plt.axis((-8.0, 352.0, 0.0, 90.0))
-plt.title(f"Grid cell: {locations[ind_loc][0]}", loc="left", fontsize=11)
+plt.title(f"Grid cell: {locations[idx_loc][0]}", loc="left", fontsize=11)
 # plt.show()
 plt.savefig(path_plot + f"f_cor_vs_sub_grid_horizon_"
-            + f"{locations[ind_loc][0]}.jpg", dpi=300, bbox_inches="tight")
+            + f"{locations[idx_loc][0]}.jpg", dpi=300, bbox_inches="tight")
 plt.close()
 
 ###############################################################################
@@ -412,45 +382,47 @@ plt.close()
 ds = xr.open_dataset(path_in_out + file_mesh)
 vlon = np.rad2deg(ds["vlon"].values)
 vlat = np.rad2deg(ds["vlat"].values)
-faces = ds["faces"][ind_hori_out, :].values
+faces = ds["faces"][idx_child, :].values
 ds.close()
 triangles = tri.Triangulation(vlon, vlat, faces)
 tri_finder = triangles.get_trifinder()
 
 # Select location
-ind_loc = 3 # (0, 1, 2, 3) (Vicosoprano, Vals, Piotta, Cevio)
-ind_tri = int(tri_finder(*locations[ind_loc][1])) # type: ignore
+idx_loc = 3 # (0, 1, 2, 3) (Vicosoprano, Vals, Piotta, Cevio)
+idx_tri = int(tri_finder(*locations[idx_loc][1])) # type: ignore
 
 # Compute sun position for specific day
 planets = load("de421.bsp")
 sun = planets["sun"]
 earth = planets["earth"]
-loc_lon, loc_lat = locations[ind_loc][1]
+loc_lon, loc_lat = locations[idx_loc][1]
 loc_obs = earth + wgs84.latlon(loc_lat, loc_lon)
 time_axis_dt = [dt.datetime(2025, 9, 1, 4, tzinfo=dt.timezone.utc)
                 + dt.timedelta(minutes=5 * i) for i in range(170)]
 sun_azim = np.empty(len(time_axis_dt))
 sun_elev = np.empty(len(time_axis_dt))
 ts = load.timescale()
-for ind_i, ta in enumerate(time_axis_dt):
+for idx_i, ta in enumerate(time_axis_dt):
     t = ts.from_datetime(ta)
     astrometric = loc_obs.at(t).observe(sun)
     alt, az, d = astrometric.apparent().altaz()
-    sun_azim[ind_i] = az.degrees
-    sun_elev[ind_i] = alt.degrees
+    sun_azim[idx_i] = az.degrees
+    sun_elev[idx_i] = alt.degrees
 
 # Plot for location
 plt.figure(figsize=(11.0, 5.5))
 for i in range(num_cell_child_per_parent):
     l_sg, = plt.plot(azim,
-             horizon_child[ind_loc * num_cell_child_per_parent + i, :],
+             horizon_child[idx_loc * num_cell_child_per_parent + i, :],
              color="grey", alpha=0.5)
-l_sg_station, = plt.plot(azim, horizon_child[ind_tri, :], color="red", alpha=1.0, lw=1.5)
-l_g, = plt.plot(azim, horizon_grid_scale[:, ind_loc], color="black", linewidth=2.0)
+l_sg_station, = plt.plot(azim, horizon_child[idx_tri, :], color="red",
+                         alpha=1.0, lw=1.5)
+l_g, = plt.plot(azim, horizon_grid_scale[:, idx_loc], color="black",
+                linewidth=2.0)
 plt.plot(sun_azim, sun_elev, color="darkorange", ls="--", lw=2.0)
 plt.xlabel("Azimuth angle (clockwise from North) [deg]")
 plt.ylabel("Elevation angle [deg]")
-plt.title(f"Grid cell: {locations[ind_loc][0]}", loc="left", fontsize=11)
+plt.title(f"Grid cell: {locations[idx_loc][0]}", loc="left", fontsize=11)
 plt.title(f"Sun path: {time_axis_dt[0].strftime("%Y-%m-%d")}", loc="right",
           fontsize=11, color="darkorange")
 plt.legend([l_sg, l_sg_station, l_g],
@@ -459,6 +431,6 @@ plt.legend([l_sg, l_sg_station, l_g],
             frameon=False, fontsize=9, loc="upper left")
 plt.axis((0.0 - 2.0, 345.0 + 2.0, 0.0, 70.0))
 # plt.show()
-plt.savefig(path_plot + f"subgrid_horizon_station_{locations[ind_loc][0]}.jpg",
+plt.savefig(path_plot + f"subgrid_horizon_station_{locations[idx_loc][0]}.jpg",
             dpi=300, bbox_inches="tight")
 plt.close()

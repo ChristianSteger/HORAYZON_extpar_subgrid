@@ -21,7 +21,7 @@ SUBROUTINE interpolate_fcor(horizon, swdir_cor, terrain_normal, &
   INTEGER, PARAMETER :: wp = dp  ! double precision
 
   REAL(wp), DIMENSION(72) :: horizon ! (24 * 3; 3 horizon angles (min, mean, max))
-  REAL(wp), DIMENSION(96) :: swdir_cor ! (24 * 4; correction factors)
+  REAL(wp), DIMENSION(120) :: swdir_cor ! (24 * 5; correction factors)
   REAL(wp), DIMENSION(3) :: terrain_normal ! x, y and z-component
   REAL(wp) :: zphi_sun   ! sun azimuth angle [rad]
   REAL(wp) :: ztheta_sun ! sun elevation angle [rad]
@@ -35,7 +35,7 @@ SUBROUTINE interpolate_fcor(horizon, swdir_cor, terrain_normal, &
   ! New variables
   INTEGER :: num_azim ! (24)
   REAL(wp) :: eta ! (2.0)
-  INTEGER :: num_nodes ! (6)
+  INTEGER :: num_nodes ! (7)
   REAL(wp) :: horizon_min, horizon_max
   REAL(wp) :: pos_norm
   REAL(wp) :: fcor_left, fcor_right
@@ -52,7 +52,7 @@ SUBROUTINE interpolate_fcor(horizon, swdir_cor, terrain_normal, &
   ! Constant values
   num_azim = 24
   eta = 2.0_wp
-  num_nodes = 6 ! all interpolation nodes including bounds
+  num_nodes = 7 ! all interpolation nodes including bounds
 
   !f2py threadsafe
   !f2py intent(in) horizon

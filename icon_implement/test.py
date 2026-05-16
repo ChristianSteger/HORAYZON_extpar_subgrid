@@ -17,7 +17,7 @@ from icon_implement.fortran import interpolate_fcor as ip_fcor_fortran
 # Constant settings
 num_azim = 24
 eta = 2.0
-num_nodes = 6 # all interpolation nodes including bounds
+num_nodes = 7 # all interpolation nodes including bounds
 
 # # Artificial input data
 # horizon = np.empty(num_azim * 3, dtype=np.float32)
@@ -40,10 +40,10 @@ ds = xr.open_dataset(file)
 num_gc_icon = ds["cell"].size
 # idx_cell = 750_000
 # idx_cell = 790_610
-# idx_cell = 777125 # total shadow until ca. ~25 deg
+idx_cell = 777125 # total shadow until ca. ~25 deg
 # idx_cell = 680_000 # always below 1.0
 # idx_cell = 580_000  # up to 6.0
-idx_cell = np.random.randint(0, num_gc_icon, 1)[0]
+# idx_cell = np.random.randint(0, num_gc_icon, 1)[0]
 horizon = ds["HORIZON"][:, idx_cell].values
 swdir_cor = ds["SWDIR_COR"][:, idx_cell].values
 terrain_normal = ds["TERRAIN_NORMAL"][:, idx_cell].values
