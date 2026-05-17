@@ -68,9 +68,10 @@ f_cor_sun = ip_fcor_python(horizon, swdir_cor, terrain_normal,
                              ztheta_sun, zphi_sun)
 print(f"fcor_sun: {f_cor_sun:.4f}")
 print("ICON (Fortran) implementation".center(60, '-'))
-f_cor_sun = ip_fcor_fortran(horizon, swdir_cor, terrain_normal,
-                            ztheta_sun, zphi_sun)
+f_cor_sun, zha_sun = ip_fcor_fortran(horizon, swdir_cor, terrain_normal,
+                                     ztheta_sun, zphi_sun)
 print(f"fcor_sun: {f_cor_sun:.4f}")
+print(f"zha_sun: {zha_sun:.1f} deg")
 
 # -----------------------------------------------------------------------------
 # Sample entire azimuth/elevation space
@@ -80,18 +81,23 @@ print(f"fcor_sun: {f_cor_sun:.4f}")
 zphi_sun = np.arange(0.0, 360.0, 1.0)
 ztheta_sun = np.arange(-3.0, 91.0, 1.0)
 f_cor_sun = np.empty((2, ztheta_sun.size, zphi_sun.size), dtype=np.float32)
+zha_sun = np.empty((ztheta_sun.size, zphi_sun.size), dtype=np.float32)
 for i in range(ztheta_sun.size):
     for j in range(zphi_sun.size):
         f_cor_sun[0, i, j] = ip_fcor_python(
             horizon, swdir_cor, terrain_normal,
             np.deg2rad(ztheta_sun[i]), np.deg2rad(zphi_sun[j]))
-        f_cor_sun[1, i, j] = ip_fcor_fortran(
+        f_cor_sun[1, i, j], zha_sun[i, j] = ip_fcor_fortran(
             horizon, swdir_cor, terrain_normal,
             np.deg2rad(ztheta_sun[i]), np.deg2rad(zphi_sun[j]))
 
 # Check maximal absolute deviation between two implementations
 dev_abs_max = np.abs(np.diff(f_cor_sun, axis=0).max()).max()
 print(f"Maximal absolute deviation: {dev_abs_max:.8f}")
+
+# Check median horizon values
+if np.any(np.diff(zha_sun, axis=0) != 0.0):
+    raise ValueError("Computation of median horizon values erroneous")
 
 # Plot
 levels = np.arange(0.0, 2.1, 0.1)
@@ -100,4 +106,5 @@ norm = colors.BoundaryNorm(levels, ncolors=cmap.N, extend="max")
 plt.figure()
 plt.pcolormesh(zphi_sun, ztheta_sun, f_cor_sun[1, :, :], cmap=cmap, norm=norm)
 plt.colorbar()
+plt.plot(zphi_sun, zha_sun[0, :], lw=1.5, color="blue")
 plt.show()
