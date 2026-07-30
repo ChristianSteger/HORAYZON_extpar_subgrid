@@ -554,10 +554,11 @@ t_beg = perf_counter()
 ds = xr.open_dataset(path_extpar + file_extpar)
 # ----------------------------
 ds = ds.drop_vars("HORIZON")
-ds["HORIZON"] = (("nhori", "cell"), shadow_angle_extpar)
-# data_all = np.vstack((shadow_angle_extpar, f_cor_sparse_extpar,
-#                       terrain_normal_extpar))
-# ds["HORIZON"] = (("nhori", "cell"), data_all)
+# ds["HORIZON"] = (("nhori", "cell"), shadow_angle_extpar)
+data_all = np.vstack((shadow_angle_extpar, f_cor_sparse_extpar,
+                      terrain_normal_extpar))
+ds["HORIZON"] = (("nhori", "cell"), data_all)
+# ----------------------------
 ds["HORIZON"].attrs["standard_name"] = "-"
 ds["HORIZON"].attrs["long_name"] = "horizon angle - topography"
 ds["HORIZON"].attrs["units"] = "deg"
@@ -586,7 +587,9 @@ encoding = {"time": {"_FillValue": None},
             "TERRAIN_NORMAL": {"_FillValue": None}
             }
 # "HORIZON": {"_FillValue": -1.e+20, "missing_value": -1.e+20}
-ds.to_netcdf(path_extpar + file_extpar[:-3] + f"_horizon_subgrid.nc",
+# ds.to_netcdf(path_extpar + file_extpar[:-3] + f"_horizon_subgrid_data_all.nc",
+# ds.to_netcdf(path_extpar + file_extpar[:-3] + f"_horizon_subgrid.nc",
+ds.to_netcdf(path_extpar + file_extpar[:-3] + f"_horizon_subgrid_temp.nc",
              format="NETCDF4", encoding=encoding)
 t_end = perf_counter()
 print(f"Write 'f_cor' to EXTPAR NetCDF file: {t_end - t_beg:.1f} s")
